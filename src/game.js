@@ -1,6 +1,7 @@
 import { Renderer, THREE } from './render.js';
 import { Physics } from './physics.js';
 import { Airstrike } from './airstrike.js';
+import { Shield } from './shield.js';
 import { Audio } from './audio.js';
 import { Store } from './store.js';
 import { LEVELS } from './levels.js';
@@ -34,6 +35,7 @@ export class Game {
         this.store.muted = m;
       },
     });
+    this.shield = new Shield(this.renderer, this.physics);
     this.airstrike = new Airstrike(this.renderer, this.physics);
     this.airstrike.audio = this.audio;
     this.airstrike.onDetonate = () => this._kick(0.5);
@@ -134,9 +136,10 @@ export class Game {
   // ---- level management -----------------------------------------------------
 
   loadLevel(index) {
-    // Tear down previous level. Reset the airstrike BEFORE the physics world is
-    // recreated so any in-flight bombs release their (soon-invalid) bodies first.
+    // Tear down previous level. Reset airstrike + shield BEFORE the physics world
+    // is recreated so their bodies are released from the still-valid world first.
     this.airstrike.reset();
+    this.shield.reset();
     for (const b of this.blocks) this.renderer.remove(b.mesh);
     for (const b of this.balls) this.renderer.remove(b.mesh);
     this.blocks = [];
@@ -156,7 +159,16 @@ export class Game {
 
     for (const spec of level.blocks) this._spawnBlock(spec);
 
-    this._camBase.copy(this.renderer.frameScene({ ...platform, maxY }));
+    // Optional counter-rotating shield on harder levels. It enlarges the scene,
+    // so the camera framing accounts for its radius and height.
+    let frame = { hx: platform.hx, hz: platform.hz, maxY };
+    if (level.shield) {
+      const radius = Math.max(platform.hx, platform.hz) + 0.6;
+      const height = maxY + 0.6;
+      this.shield.build({ radius, height, arms: level.shield.arms, speed: level.shield.speed });
+      frame = { hx: radius, hz: radius, maxY: Math.max(maxY, height) };
+    }
+    this._camBase.copy(this.renderer.frameScene(frame));
 
     this.ui.winScreen.classList.add('hidden');
     this.ui.level.textContent = index + 1;
@@ -279,6 +291,7 @@ export class Game {
       this._sync(dt);
       // Keep the table mesh aligned with the (possibly spinning) physics platform.
       if (this.renderer.platform) this.renderer.platform.rotation.y = this.physics.platformAngle;
+      this.shield.update();
       this.airstrike.update(dt);
       this._checkWin(false);
     }

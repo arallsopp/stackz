@@ -25,7 +25,37 @@ export class Physics {
     this.spin = spin;
     this.platformAngle = 0;
     this.planeCollider = null; // stale ref from the previous world
+    this.shieldBody = null;
+    this.shieldSpin = 0;
+    this.shieldAngle = 0;
     this._addPlatform(platform, spin);
+  }
+
+  // A counter-rotating shield: `arms` vertical bars orbiting the tower on one
+  // kinematic body, so incoming shots are blocked at certain angles/times.
+  // `spin` (rad/s, typically opposite the platform) sets the rotation rate.
+  addShield({ radius, height, arms = 3, spin = -0.8 }) {
+    const body = this.world.createRigidBody(RAPIER.RigidBodyDesc.kinematicPositionBased());
+    const armH = Math.max(height - 0.3, 0.5);
+    const y = 0.15 + armH / 2;
+    for (let i = 0; i < arms; i++) {
+      const a = (i / arms) * Math.PI * 2;
+      const col = RAPIER.ColliderDesc.cuboid(0.22, armH / 2, 0.22)
+        .setTranslation(Math.cos(a) * radius, y, Math.sin(a) * radius)
+        .setRestitution(0.3)
+        .setFriction(0.4);
+      this.world.createCollider(col, body);
+    }
+    this.shieldBody = body;
+    this.shieldSpin = spin;
+    this.shieldAngle = 0;
+    return body;
+  }
+
+  removeShield() {
+    if (this.shieldBody && this.world) this.world.removeRigidBody(this.shieldBody);
+    this.shieldBody = null;
+    this.shieldSpin = 0;
   }
 
   // A moving kinematic box the Hercules carries, so it physically shoves any
@@ -147,6 +177,11 @@ export class Physics {
       this.platformAngle += this.spin / 60;
       const a = this.platformAngle * 0.5;
       this.platformBody.setNextKinematicRotation({ x: 0, y: Math.sin(a), z: 0, w: Math.cos(a) });
+    }
+    if (this.shieldBody) {
+      this.shieldAngle += this.shieldSpin / 60;
+      const a = this.shieldAngle * 0.5;
+      this.shieldBody.setNextKinematicRotation({ x: 0, y: Math.sin(a), z: 0, w: Math.cos(a) });
     }
     this.world.step(this.eventQueue);
     // Turn newly-started contacts into impact events for audio. IMPORTANT: only

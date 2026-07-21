@@ -126,6 +126,7 @@ function buildLevels() {
     name: 'ZIGGURAT',
     par: 5,
     airstrikes: 2,
+    shield: { arms: 3, speed: -0.7 }, // counter-rotates the platform
     blocks: spire(8, { base: 2.0, top: 0.7, bh: 0.62 }),
   });
 
@@ -136,6 +137,7 @@ function buildLevels() {
     par: 6,
     airstrikes: 2,
     spin: 0.18,
+    shield: { arms: 3, speed: -1.0 },
     blocks: [
       ...column(5, { cx: -1.2, cz: -1.2, bw: 0.9, bh: 0.8, bd: 0.9 }),
       ...column(5, { cx: 1.2, cz: -1.2, bw: 0.9, bh: 0.8, bd: 0.9 }),
