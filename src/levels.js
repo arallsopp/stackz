@@ -187,33 +187,60 @@ function ramp({ cx = 0, cz = 0, rise = 2.0, run = 3.2, width = 2.2, thick = 0.4,
   return blocks;
 }
 
-// A knee-pivot "kicker": a fixed grey hinge post + a heavy arm ("boot") hinged to
-// swing in the X-Y plane (axis Z). Author it cocked up on one side; a knockable
-// pin holds it there, and shooting the pin lets it swing down and boot blocks off
-// the table. Post + arm are `mechanism` (non-clearing hardware). `cock` is the
-// arm's angle from +x (radians). Returns [post, arm]; author the pin + targets
-// around it in the level.
-function pivot({ hingeX = -1.4, hingeY = 1.7, cz = 0, armLen = 2.2, cock = 2.3, color = NEON.violet } = {}) {
-  const dx = Math.cos(cock), dy = Math.sin(cock);
+// A swing-frame KICKER. A Π-shaped frame (two vertical posts joined by a top bar,
+// all fixed grey mechanism) with a heavy "boot" arm hinged at the top-bar centre
+// (axis Z). The boot is authored HORIZONTAL, pointing -x, propped up by a coloured
+// PIN bar (a playable target). Shoot the pin out and the boot swings down through
+// the frame, reaching the bottom at full speed to kick blocks off the +x edge.
+// Returns the frame + boot + pin; author the target blocks separately.
+// `barY` = hinge / top-bar height, `arm` = boot length, `postX` = post spread.
+// The boot swings about the X axis (in the Y-Z plane) so it kicks blocks along Z,
+// off an edge with a CLEAR path (unlike +x, where a frame post would block them).
+// The boot is a wide paddle pointing +z (toward the camera), propped horizontal by
+// a coloured PIN in FRONT (so the player can actually hit it). Shoot the pin and
+// the boot swings down through the bottom and sweeps the blocks off the rear edge.
+function swingKicker({ barY = 3.0, arm = 2.5, postX = 1.6, bootW = 1.7, pinColor = NEON.yellow } = {}) {
+  const pinTop = barY - 0.2; // just under the boot's far end
   return [
-    { shape: 'box', fixed: true, mechanism: true, pos: [hingeX, hingeY / 2, cz], size: [0.42, hingeY, 0.5], color },
+    // Π frame (grey mechanism, fixed): posts in X, top bar along X.
+    { shape: 'box', fixed: true, mechanism: true, pos: [-postX, barY / 2, 0], size: [0.3, barY, 0.4] },
+    { shape: 'box', fixed: true, mechanism: true, pos: [postX, barY / 2, 0], size: [0.3, barY, 0.4] },
+    { shape: 'box', fixed: true, mechanism: true, pos: [0, barY + 0.15, 0], size: [postX * 2 + 0.3, 0.3, 0.4] },
+    // Boot paddle: hinged at the top-bar centre (axis X), horizontal, pointing +z.
     {
       shape: 'box',
       mechanism: true,
-      pos: [hingeX + dx * armLen / 2, hingeY + dy * armLen / 2, cz],
-      size: [armLen, 0.34, 0.6],
-      rot: [0, 0, cock],
+      pos: [0, barY, arm / 2],
+      size: [bootW, 0.3, arm],
       density: 8, // heavy boot -> a solid kick
-      color,
-      hinge: { anchor: [hingeX, hingeY, cz], axis: [0, 0, 1] },
+      hinge: { anchor: [0, barY, 0], axis: [1, 0, 0] },
     },
+    // Pin: a coloured (playable) bar in front, propping the boot's far end up.
+    { shape: 'box', pos: [0, pinTop / 2, arm], size: [bootW * 0.7, pinTop, 0.35], color: pinColor },
   ];
 }
 
 function buildLevels() {
   const levels = [];
 
-  // L1 — LIFT OFF. A lone tall column. One good hit topples it.
+  // L1 (TEMP) — KICKER. Prototype up front for testing: a Π swing-frame with a
+  // boot held horizontal by a coloured pin. Shoot the pin and the boot swings down
+  // through the frame and kicks the neon blocks off the far edge.
+  reset();
+  levels.push({
+    name: 'KICKER',
+    par: 3,
+    airstrikes: 1,
+    spin: 0,
+    blocks: [
+      ...swingKicker({ barY: 3.0, arm: 2.5, postX: 1.6, bootW: 1.7, pinColor: NEON.yellow }),
+      // Targets at the bottom of the swing, kicked off the rear edge.
+      { shape: 'box', pos: [-0.45, 0.5, -0.5], size: [0.85, 1.0, 0.85], color: NEON.magenta, density: 0.4 },
+      { shape: 'box', pos: [0.45, 0.5, -0.5], size: [0.85, 1.0, 0.85], color: NEON.cyan, density: 0.4 },
+    ],
+  });
+
+  // LIFT OFF. A lone tall column. One good hit topples it.
   reset();
   levels.push({
     name: 'LIFT OFF',
@@ -536,26 +563,6 @@ function buildLevels() {
       { shape: 'box', pos: [0, 0.5, 0], size: [1.0, 1.0, 1.0], color: NEON.cyan },
       { shape: 'box', pos: [0, 1.5 + GAP, 0], size: [1.0, 1.0, 1.0], color: NEON.magenta },
       { shape: 'box', pos: [-1.3, 0.5, 0], size: [1.0, 1.0, 1.0], color: NEON.yellow },
-    ],
-  });
-
-  // L22 — KICKER (proto). A heavy boot on a knee-pivot, cocked up-left and propped
-  // by a grey strut-pin. Shoot the strut away and the boot swings down through the
-  // bottom and flings UP the right side, booting the neon blocks off that edge.
-  // (Static base so the fixed hinge post stays put.)
-  reset();
-  levels.push({
-    name: 'KICKER (proto)',
-    par: 3,
-    airstrikes: 1,
-    spin: 0,
-    blocks: [
-      ...pivot({ hingeX: -1.4, hingeY: 2.2, armLen: 2.6, cock: 2.7, color: NEON.violet }),
-      // Strut-pin propping the cocked boot up. Shoot it out to release the boot.
-      { shape: 'box', mechanism: true, pos: [-3.75, 1.55, 0], size: [0.34, 3.1, 0.6], color: NEON.violet },
-      // Light targets clustered where the descending boot rakes them off the edge.
-      { shape: 'box', pos: [0.5, 0.5, 0], size: [0.9, 1.0, 0.9], color: NEON.magenta, density: 0.4 },
-      { shape: 'box', pos: [1.45, 0.5, 0], size: [0.9, 1.0, 0.9], color: NEON.cyan, density: 0.4 },
     ],
   });
 
