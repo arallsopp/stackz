@@ -251,6 +251,15 @@ export class Renderer {
     });
   }
 
+  // First intersection point of the CURRENT pointer ray (set by the preceding
+  // pointerRay call) with the given meshes, or null. Lets the game aim a lobbed
+  // shot at exactly the block that was tapped.
+  raycastPoint(meshes) {
+    if (!meshes || !meshes.length) return null;
+    const hits = this.raycaster.intersectObjects(meshes, false);
+    return hits.length ? hits[0].point.clone() : null;
+  }
+
   // Screen point (clientX/Y) -> normalized ray direction from the camera.
   pointerRay(clientX, clientY) {
     const rect = this.canvas.getBoundingClientRect();

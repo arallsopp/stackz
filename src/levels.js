@@ -222,7 +222,7 @@ function buildLevels() {
     name: 'JENGA',
     par: 3,
     airstrikes: 1,
-    spin: 0, // still table: no turntable nudging the stack around
+    spin: 0.12, // gentle turntable (every level spins)
     blocks: jenga(3, { barLen: 2.1, barW: 0.8, barH: 0.52, pull: [0, 1, 2], friction: 0.26 }),
   });
 
@@ -250,7 +250,7 @@ function buildLevels() {
     name: 'DOMINO RUN',
     par: 3,
     airstrikes: 1,
-    spin: 0,
+    spin: 0.1,
     blocks: dominoes(6, { cx: -1.5, spacing: 0.6, w: 1.4, h: 1.8, t: 0.24 }),
   });
 
@@ -271,7 +271,7 @@ function buildLevels() {
     name: 'BOWLING',
     par: 4,
     airstrikes: 1,
-    spin: 0,
+    spin: 0.08,
     blocks: [
       ...ramp({ cx: -1.9, rise: 2.0, run: 2.6, width: 2.4, rollerR: 0.6 }),
       // Rack sits downhill of where the plank meets the table, clear of it.
@@ -286,7 +286,7 @@ function buildLevels() {
     name: 'THE TERRACE',
     par: 4,
     airstrikes: 1,
-    spin: 0,
+    spin: 0.12,
     blocks: [
       ...ramp({ cx: -1.6, rise: 1.8, run: 2.8, width: 2.6, roller: false }),
       ...column(3, { cx: -1.6, bw: 1.0, bh: 0.7, bd: 1.6 }).map((b) => ({ ...b, pos: [b.pos[0], b.pos[1] + 1.8, b.pos[2]] })),
@@ -299,7 +299,7 @@ function buildLevels() {
     name: 'THE WALL',
     par: 4,
     airstrikes: 1,
-    spin: 0,
+    spin: 0.14,
     blocks: wall(5, 4, { bw: 0.94, bh: 0.5, bd: 0.7, friction: 0.5 }),
   });
 
@@ -309,7 +309,7 @@ function buildLevels() {
     name: 'THE CITADEL',
     par: 6,
     airstrikes: 2,
-    spin: 0, // still: the turntable slowly rolls the loose roof-drum off on its own
+    spin: 0.12,
     shield: { arms: 4, speed: -0.1 },
     blocks: [
       ...column(5, { cx: -1.2, cz: -1.2, bw: 0.9, bh: 0.8, bd: 0.9 }),
@@ -349,7 +349,7 @@ function buildLevels() {
     name: 'DOMINO CASCADE',
     par: 5,
     airstrikes: 2,
-    spin: 0,
+    spin: 0.1,
     blocks: [
       ...dominoes(7, { cx: -2.2, cz: -1.4, spacing: 0.6, w: 1.1, h: 1.7, t: 0.24, curve: 0.06 }),
       ...spire(4, { cx: 2.0, cz: 0.6, base: 1.4, top: 0.6, bh: 0.6 }),
@@ -364,7 +364,7 @@ function buildLevels() {
     name: 'THE SPILLWAY',
     par: 4,
     airstrikes: 2,
-    spin: 0,
+    spin: 0.08,
     blocks: [
       ...ramp({ cx: -2.0, rise: 2.2, run: 2.2, width: 2.2, shelfW: 2.0, rollerR: 0.6 }),
       // Chain starts downhill of where the plank meets the table.
@@ -379,7 +379,7 @@ function buildLevels() {
     name: 'THE GATE',
     par: 5,
     airstrikes: 2,
-    spin: 0,
+    spin: 0.12,
     blocks: [
       ...column(5, { cx: -1.5, bw: 0.9, bh: 0.7, bd: 1.2 }),
       ...column(5, { cx: 1.5, bw: 0.9, bh: 0.7, bd: 1.2 }),
@@ -397,7 +397,7 @@ function buildLevels() {
     name: 'AVALANCHE',
     par: 5,
     airstrikes: 2,
-    spin: 0,
+    spin: 0.08,
     blocks: [
       ...ramp({ cx: -1.9, rise: 2.4, run: 2.6, width: 2.6, shelfW: 2.4, rollerR: 0.62 }),
       // Deep rack, set clear of the plank foot so the boulder does the demolition.
@@ -447,7 +447,7 @@ function buildLevels() {
     name: 'HANGING GARDENS',
     par: 6,
     airstrikes: 2,
-    spin: 0,
+    spin: 0.12,
     blocks: [
       // Two short inward terraces (their planks stop short of centre so they don't
       // collide), each carrying a little tower on the high ground.

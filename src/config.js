@@ -11,8 +11,9 @@ export const CULL_Y = -18; // remove meshes/bodies once they fall past this
 
 // --- projectiles ---
 export const MAX_BALLS = 6; // concurrent player balls on screen before the oldest is culled
-export const BALL_SPEED = 34; // launch speed
+export const BALL_SPEED = 34; // horizontal launch speed (the ball then ARCS to the tapped point)
 export const BALL_RADIUS = 0.38;
+export const GRAVITY = 20; // world gravity magnitude (matches physics.js); used to arc the shot
 
 // The per-level ball budget (the ammo you count down to zero) is derived from the
 // level's par: you get `par + BALL_BUDGET_BONUS` balls. Run out and the level is
@@ -31,6 +32,12 @@ export const DEFAULT_SPIN = 0.18; // rad/s; every level turns unless it override
 // --- scoring / economy ---
 export const WINS_PER_AIRSTRIKE = 5; // +1 airstrike bank per this many wins
 export const STAR_PAR_OFFSET_2 = 2; // <= par+this earns 2 stars (<= par earns 3)
+
+// --- par learning (Learning mode) ---
+// In Learning mode the level's par is a running average of shots-to-clear. A
+// FAILED run counts as (ball budget + this) toward that average, so par climbs
+// when a level plays too hard (and the ball budget with it) instead of stranding.
+export const FAIL_PAR_INCREMENT = 1;
 
 // --- camera shake ---
 export const SHAKE_FIRE = 0.18;

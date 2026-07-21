@@ -14,8 +14,10 @@ import {
   MAX_BALLS,
   BALL_SPEED,
   BALL_RADIUS,
+  GRAVITY,
   BALL_BUDGET_BONUS,
   LOSE_GRACE_MS,
+  FAIL_PAR_INCREMENT,
   PLATFORM_MARGIN,
   DEFAULT_SPIN,
   WINS_PER_AIRSTRIKE,
@@ -101,8 +103,16 @@ export class Game {
         this.audio.unlock(); // doubles as an iOS unlock gesture
         this.hud.setMuted(this.audio.toggle());
       },
+      // Learning ⇄ Normal. Learning enables SKIP and auto-tunes par from attempts.
+      onToggleMode: () => {
+        this.audio.click();
+        this.store.mode = this.store.mode === 'learning' ? 'normal' : 'learning';
+        this.hud.setMode(this.store.mode);
+        if (this.state !== 'menu') this.loadLevel(this.levelIndex); // re-derive par/budget
+      },
     });
     this.hud.setMuted(this.audio.isMuted());
+    this.hud.setMode(this.store.mode);
     this.hud.setRecordLevel(this.store.highestLevel + 1); // furthest reached (1-based)
 
     // Tap-to-fire on the canvas (input stays with the game; display with the Hud).
@@ -143,7 +153,9 @@ export class Game {
 
     this.levelIndex = index;
     this.shots = 0;
-    this.ballBudget = level.par + BALL_BUDGET_BONUS;
+    // Learning mode auto-tunes par from past attempts; Normal uses the authored par.
+    this.par = this.store.mode === 'learning' ? this.store.learnedPar(index, level.par) : level.par;
+    this.ballBudget = this.par + BALL_BUDGET_BONUS;
     this.airstrikeUsed = false;
     this._loseAt = null;
     this.state = 'playing';
@@ -171,7 +183,7 @@ export class Game {
     this.hud.hideWin();
     this.hud.hideLose();
     this.hud.setLevel(index + 1);
-    this.hud.setPar(level.par);
+    this.hud.setPar(this.par);
     this._updateHud();
   }
 
@@ -241,12 +253,25 @@ export class Game {
   _fire(clientX, clientY) {
     if (this.shots >= this.ballBudget) return; // out of balls
     const ray = this.renderer.pointerRay(clientX, clientY);
-    // Launch from just in front of the camera, flying toward the tapped point.
+    // Launch from just in front of the camera.
     const origin = ray.origin.clone().addScaledVector(ray.direction, 1.2);
-    const vel = ray.direction.clone().multiplyScalar(BALL_SPEED);
+    // Aim at WHAT was tapped: the struck block, else a point at the tower's depth
+    // along the ray. Then fire a BALLISTIC arc that passes through it — horizontal
+    // speed stays at BALL_SPEED (the familiar feel) while a vertical term cancels
+    // gravity's drop, so distant/high stacks are reachable instead of falling short.
+    let target = this.renderer.raycastPoint(this.blocks.map((b) => b.mesh));
+    if (!target) {
+      const center = new THREE.Vector3(0, (this._bounds?.maxY ?? 4) * 0.5, 0);
+      const depth = Math.max(center.sub(origin).dot(ray.direction), 4);
+      target = origin.clone().addScaledVector(ray.direction, depth);
+    }
+    const disp = target.clone().sub(origin);
+    const horiz = Math.max(Math.hypot(disp.x, disp.z), 3);
+    const t = horiz / BALL_SPEED; // time of flight at the fixed horizontal speed
+    const vel = { x: disp.x / t, y: disp.y / t + 0.5 * GRAVITY * t, z: disp.z / t };
     const body = this.physics.addBall(
       { x: origin.x, y: origin.y, z: origin.z },
-      { x: vel.x, y: vel.y, z: vel.z },
+      vel,
       BALL_RADIUS
     );
     const mesh = this.renderer.makeBall(BALL_RADIUS);
@@ -351,7 +376,6 @@ export class Game {
     this.state = 'won';
     this._loseAt = null;
     this.audio.win();
-    const level = LEVELS[this.levelIndex];
 
     // A win always counts toward airstrike refills, but a score is only recorded
     // when the level was cleared WITHOUT an airstrike (an airstrike voids it).
@@ -364,12 +388,14 @@ export class Game {
       const isBest = this.store.recordScore(this.levelIndex, this.shots);
       const best = this.store.bestScore(this.levelIndex);
       bestText = isBest ? '★ NEW BEST!' : `Best: ${best} shots`;
+      // Learning mode: feed this clear into the running par average.
+      if (this.store.mode === 'learning') this.store.recordParSample(this.levelIndex, this.shots);
     }
 
     this.hud.showWin({
       shots: this.shots,
-      par: level.par,
-      stars: this._stars(this.shots, level.par),
+      par: this.par,
+      stars: this._stars(this.shots, this.par),
       bestText,
       airstrikeUsed: this.airstrikeUsed,
     });
@@ -392,6 +418,11 @@ export class Game {
     this.state = 'lost';
     this._loseAt = null;
     this.audio.lose();
+    // Learning mode: a failure is evidence the level needs MORE than the budget, so
+    // feed budget+increment into the average — par (and the budget) climb next time.
+    if (this.store.mode === 'learning') {
+      this.store.recordParSample(this.levelIndex, this.ballBudget + FAIL_PAR_INCREMENT);
+    }
     const best = this.store.bestScore(this.levelIndex);
     this.hud.showLose({ bestText: best != null ? `Best: ${best} shots` : '' });
   }

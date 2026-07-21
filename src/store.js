@@ -10,6 +10,8 @@ const DEFAULTS = {
   airstrikes: 1, // current airstrike bank (scarce, global)
   wins: 0, // total level completions (drives airstrike replenishment)
   muted: false,
+  mode: 'normal', // 'normal' (authored par) | 'learning' (par auto-tunes from attempts, skip enabled)
+  parStats: {}, // { [levelIndex]: { sum, n } } running shots-to-clear stats for Learning mode
 };
 
 export class Store {
@@ -79,6 +81,34 @@ export class Store {
     this.data.wins += 1;
     if (this.data.wins % per === 0) this.data.airstrikes += 1;
     this._write();
+  }
+
+  // --- mode ---
+  get mode() {
+    return this.data.mode;
+  }
+
+  set mode(v) {
+    this.data.mode = v === 'learning' ? 'learning' : 'normal';
+    this._write();
+  }
+
+  // --- learned par (Learning mode) ---
+  // Record one shots-to-clear sample (a clear, or a failure charged as budget+inc).
+  recordParSample(levelIndex, shots) {
+    const s = (this.data.parStats ||= {});
+    const e = (s[levelIndex] ||= { sum: 0, n: 0 });
+    e.sum += shots;
+    e.n += 1;
+    this._write();
+  }
+
+  // Effective par = running average of samples, SEEDED with the authored par as a
+  // prior so a single fluke result can't strand the ball budget. With no samples
+  // it's just the authored par; it converges to the player's own average.
+  learnedPar(levelIndex, authoredPar) {
+    const e = this.data.parStats?.[levelIndex] || { sum: 0, n: 0 };
+    return Math.max(1, Math.round((authoredPar + e.sum) / (1 + e.n)));
   }
 
   // --- mute ---

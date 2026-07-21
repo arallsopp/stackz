@@ -17,6 +17,8 @@ export class Hud {
       airstrikeCount: el('airstrike-count'),
       muteBtn: el('mute-btn'),
       skipBtn: el('skip-btn'),
+      modeBtn: el('mode-btn'),
+      modeValue: el('mode-value'),
       loading: el('loading'),
       startScreen: el('start-screen'),
       winScreen: el('win-screen'),
@@ -47,6 +49,19 @@ export class Hud {
       e.stopPropagation();
       handlers.onSkip?.();
     });
+    this.el.modeBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      handlers.onToggleMode?.();
+    });
+    this._mode = 'normal';
+  }
+
+  // Reflect the current game mode: label the toggle and show SKIP only in Learning.
+  setMode(mode) {
+    this._mode = mode;
+    this.el.modeValue.textContent = mode === 'learning' ? 'LEARNING' : 'NORMAL';
+    this.el.modeBtn.classList.toggle('is-learning', mode === 'learning');
+    this.el.skipBtn.classList.toggle('hidden', mode !== 'learning');
   }
 
   hideLoading() {
@@ -59,7 +74,7 @@ export class Hud {
     this.el.hud.classList.remove('hidden');
     this.el.airstrikeBtn.classList.remove('hidden');
     this.el.muteBtn.classList.remove('hidden');
-    this.el.skipBtn.classList.remove('hidden');
+    this.el.skipBtn.classList.toggle('hidden', this._mode !== 'learning'); // SKIP is a Learning-mode aid
   }
 
   setLevel(n) {
