@@ -4,14 +4,30 @@ import { Airstrike } from './airstrike.js';
 import { Shield } from './shield.js';
 import { Audio } from './audio.js';
 import { Store } from './store.js';
+import { Hud } from './hud.js';
 import { LEVELS } from './levels.js';
+import {
+  FIXED_TIMESTEP,
+  MAX_SUBSTEPS,
+  CLEAR_Y,
+  CULL_Y,
+  MAX_BALLS,
+  BALL_SPEED,
+  BALL_RADIUS,
+  DEFAULT_SPIN,
+  AIRSTRIKE_SHOT_COST,
+  WINS_PER_AIRSTRIKE,
+  STAR_PAR_OFFSET_2,
+  SHAKE_FIRE,
+  SHAKE_EXPLOSION,
+} from './config.js';
 
-const FIXED = 1 / 60;
-const CLEAR_Y = -2.5; // a block below this has fallen off the platform
-const CULL_Y = -18; // fully remove meshes/bodies past this
-const MAX_BALLS = 6;
-const DEFAULT_SPIN = 0.18; // every level turns slowly unless it overrides `spin`
+const MODEL_URL = import.meta.env.BASE_URL + 'models/c130-hercules/scene.gltf';
+const SETTLE_QUIET_MS = 500; // suppress impact sounds while a level settles
 
+// Orchestrator: owns the game loop and level lifecycle, and wires the subsystems
+// (Renderer, Physics, Airstrike, Shield, Audio, Store, Hud) together. It holds no
+// DOM or storage details of its own — those live in Hud and Store respectively.
 export class Game {
   constructor() {
     this.blocks = [];
@@ -21,6 +37,8 @@ export class Game {
     this.state = 'menu'; // menu | playing | won
     this._accum = 0;
     this._last = 0;
+    this._frames = 0;
+    this._impactMuteUntil = 0;
     this.shake = 0;
     this._camBase = new THREE.Vector3();
   }
@@ -38,98 +56,58 @@ export class Game {
     this.shield = new Shield(this.renderer, this.physics);
     this.airstrike = new Airstrike(this.renderer, this.physics);
     this.airstrike.audio = this.audio;
-    this.airstrike.onDetonate = () => this._kick(0.5);
+    this.airstrike.onDetonate = () => this._kick(SHAKE_EXPLOSION);
     this.airstrike.onComplete = () => this._checkWin(true);
     // Always explode against bodies still in the world (never a stale snapshot).
     this.airstrike.getLiveBodies = () => this.blocks.map((b) => b.body);
-    // Load the real C-130 model; if it fails we keep the cartoon sprite.
     try {
-      await this.airstrike.loadModel(import.meta.env.BASE_URL + 'models/c130-hercules/scene.gltf');
+      await this.airstrike.loadModel(MODEL_URL);
     } catch (e) {
       console.warn('C-130 model failed to load, using sprite fallback:', e);
     }
-    this._camBase.copy(this.renderer.camera.position);
 
-    // Physical collision sounds (suppressed briefly after each level loads while
-    // the stack settles, so we don't get a clatter on spawn).
-    this._impactMuteUntil = 0;
+    // Physical collision sounds (muted briefly after each level load while the
+    // stack settles, so we don't get a clatter on spawn).
     this.physics.onImpact = (strength) => {
-      if (performance.now() < this._impactMuteUntil) return;
-      this.audio.impact(strength);
+      if (performance.now() >= this._impactMuteUntil) this.audio.impact(strength);
     };
 
-    this._bindUI();
+    this.hud = new Hud({
+      onStart: () => {
+        this.audio.unlock();
+        this.audio.click();
+        this._start();
+      },
+      onReplay: () => {
+        this.audio.click();
+        this.loadLevel(this.levelIndex);
+      },
+      onNext: () => {
+        this.audio.click();
+        this.loadLevel((this.levelIndex + 1) % LEVELS.length);
+      },
+      onAirstrike: () => this._callAirstrike(),
+      onToggleMute: () => {
+        this.audio.unlock(); // doubles as an iOS unlock gesture
+        this.hud.setMuted(this.audio.toggle());
+      },
+    });
+    this.hud.setMuted(this.audio.isMuted());
+
+    // Tap-to-fire on the canvas (input stays with the game; display with the Hud).
+    this.renderer.canvas.addEventListener('pointerdown', (e) => {
+      this.audio.resume(); // keep the context alive across backgrounding
+      if (this.state === 'playing') this._fire(e.clientX, e.clientY);
+    });
     window.addEventListener('resize', () => this._onResize());
 
-    document.getElementById('loading').classList.add('hidden');
+    this._camBase.copy(this.renderer.camera.position);
+    this.hud.hideLoading();
     requestAnimationFrame((t) => this._frame(t));
   }
 
-  _bindUI() {
-    const el = (id) => document.getElementById(id);
-    this.ui = {
-      hud: el('hud'),
-      level: el('hud-level'),
-      shots: el('hud-shots'),
-      par: el('hud-par'),
-      airstrikeBtn: el('airstrike-btn'),
-      airstrikeCount: el('airstrike-count'),
-      muteBtn: el('mute-btn'),
-      startScreen: el('start-screen'),
-      winScreen: el('win-screen'),
-      winShots: el('win-shots'),
-      winPar: el('win-par'),
-      winBest: el('win-best'),
-      stars: el('stars'),
-    };
-    this._syncMuteButton();
-
-    el('start-btn').addEventListener('click', () => {
-      this.audio.unlock();
-      this.audio.click();
-      this._start();
-    });
-    el('replay-btn').addEventListener('click', () => {
-      this.audio.click();
-      this.loadLevel(this.levelIndex);
-    });
-    el('next-btn').addEventListener('click', () => {
-      this.audio.click();
-      this.levelIndex = (this.levelIndex + 1) % LEVELS.length;
-      this.loadLevel(this.levelIndex);
-    });
-    this.ui.airstrikeBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      this._callAirstrike();
-    });
-    this.ui.muteBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      this.audio.unlock(); // also serves as an unlock gesture on iOS
-      this.audio.toggle();
-      this._syncMuteButton();
-    });
-
-    // Tap-to-fire on the canvas.
-    const canvas = this.renderer.canvas;
-    canvas.addEventListener('pointerdown', (e) => {
-      this.audio.resume(); // keep the context alive across backgrounding
-      if (this.state !== 'playing') return;
-      this._fire(e.clientX, e.clientY);
-    });
-  }
-
-  _syncMuteButton() {
-    const muted = this.audio.isMuted();
-    this.ui.muteBtn.textContent = muted ? '🔇' : '🔊';
-    this.ui.muteBtn.classList.toggle('is-muted', muted);
-    this.ui.muteBtn.setAttribute('aria-pressed', String(muted));
-  }
-
   _start() {
-    this.ui.startScreen.classList.add('hidden');
-    this.ui.hud.classList.remove('hidden');
-    this.ui.airstrikeBtn.classList.remove('hidden');
-    this.ui.muteBtn.classList.remove('hidden');
+    this.hud.enterGame();
     this.loadLevel(0);
   }
 
@@ -155,7 +133,7 @@ export class Game {
     this.levelIndex = index;
     this.shots = 0;
     this.state = 'playing';
-    this._impactMuteUntil = performance.now() + 500; // let the stack settle quietly
+    this._impactMuteUntil = performance.now() + SETTLE_QUIET_MS;
 
     for (const spec of level.blocks) this._spawnBlock(spec);
 
@@ -170,9 +148,9 @@ export class Game {
     }
     this._camBase.copy(this.renderer.frameScene(frame));
 
-    this.ui.winScreen.classList.add('hidden');
-    this.ui.level.textContent = index + 1;
-    this.ui.par.textContent = level.par;
+    this.hud.hideWin();
+    this.hud.setLevel(index + 1);
+    this.hud.setPar(level.par);
     this._updateHud();
   }
 
@@ -214,8 +192,7 @@ export class Game {
       const [w, h, d] = spec.size;
       let quat = null;
       if (spec.rot) {
-        const e = new THREE.Euler(...spec.rot);
-        const q = new THREE.Quaternion().setFromEuler(e);
+        const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(...spec.rot));
         quat = { x: q.x, y: q.y, z: q.z, w: q.w };
       }
       const body = this.physics.addBox(pos, { x: w / 2, y: h / 2, z: d / 2 }, quat);
@@ -238,12 +215,14 @@ export class Game {
   _fire(clientX, clientY) {
     const ray = this.renderer.pointerRay(clientX, clientY);
     // Launch from just in front of the camera, flying toward the tapped point.
-    const origin = ray.origin.clone().add(ray.direction.clone().multiplyScalar(1.2));
-    const speed = 34;
-    const vel = ray.direction.clone().multiplyScalar(speed);
-
-    const body = this.physics.addBall({ x: origin.x, y: origin.y, z: origin.z }, { x: vel.x, y: vel.y, z: vel.z });
-    const mesh = this.renderer.makeBall(0.38);
+    const origin = ray.origin.clone().addScaledVector(ray.direction, 1.2);
+    const vel = ray.direction.clone().multiplyScalar(BALL_SPEED);
+    const body = this.physics.addBall(
+      { x: origin.x, y: origin.y, z: origin.z },
+      { x: vel.x, y: vel.y, z: vel.z },
+      BALL_RADIUS
+    );
+    const mesh = this.renderer.makeBall(BALL_RADIUS);
     this.balls.push({ body, mesh, life: 0 });
 
     // Cap concurrent balls.
@@ -255,8 +234,8 @@ export class Game {
 
     this.shots++;
     this._updateHud();
-    this._flash(clientX, clientY);
-    this._kick(0.18);
+    this.hud.flash(clientX, clientY);
+    this._kick(SHAKE_FIRE);
     this.audio.fire();
   }
 
@@ -266,7 +245,7 @@ export class Game {
     const live = this.blocks.filter((b) => !b.cleared).map((b) => b.body);
     if (!this.airstrike.launch(live, this._bounds)) return;
     this.store.spendAirstrike(); // scarce, global resource
-    this.shots += 2; // powerful, so it carries a scoring cost
+    this.shots += AIRSTRIKE_SHOT_COST; // powerful, so it carries a scoring cost
     this._updateHud();
   }
 
@@ -274,22 +253,22 @@ export class Game {
 
   _frame(t) {
     requestAnimationFrame((tt) => this._frame(tt));
-    this._frames = (this._frames || 0) + 1;
+    this._frames++;
     if (!this._last) this._last = t;
     let dt = (t - this._last) / 1000;
     this._last = t;
-    if (dt > 0.1) dt = 0.1; // avoid spiral of death after tab switch
+    if (dt > 0.1) dt = 0.1; // avoid a spiral of death after a tab switch
 
     if (this.state !== 'menu') {
       this._accum += dt;
       let steps = 0;
-      while (this._accum >= FIXED && steps < 5) {
+      while (this._accum >= FIXED_TIMESTEP && steps < MAX_SUBSTEPS) {
         this.physics.step();
-        this._accum -= FIXED;
+        this._accum -= FIXED_TIMESTEP;
         steps++;
       }
       this._sync(dt);
-      // Keep the table mesh aligned with the (possibly spinning) physics platform.
+      // Keep the table mesh aligned with the (spinning) physics platform + shield.
       if (this.renderer.platform) this.renderer.platform.rotation.y = this.physics.platformAngle;
       this.shield.update();
       this.airstrike.update(dt);
@@ -331,9 +310,8 @@ export class Game {
 
   _checkWin(force) {
     if (this.state !== 'playing') return;
-    // Win when every block has been knocked off the platform.
-    const remaining = this.blocks.filter((b) => !b.cleared).length;
-    if (remaining > 0) return;
+    // Win when every block has been knocked off the table.
+    if (this.blocks.some((b) => !b.cleared)) return;
     // Don't declare victory mid-airstrike unless it's the completion callback.
     if (this.airstrike.busy && !force) return;
     this._win();
@@ -343,48 +321,32 @@ export class Game {
     this.state = 'won';
     this.audio.win();
     const level = LEVELS[this.levelIndex];
-    const stars = this._stars(this.shots, level.par);
 
     // Persist progress: personal best per level + a win toward airstrike refills.
     const isBest = this.store.recordScore(this.levelIndex, this.shots);
-    this.store.registerWin();
-
-    this.ui.winShots.textContent = this.shots;
-    this.ui.winPar.textContent = level.par;
+    this.store.registerWin(WINS_PER_AIRSTRIKE);
     const best = this.store.bestScore(this.levelIndex);
-    this.ui.winBest.textContent = isBest ? '★ NEW BEST!' : `Best: ${best} shots`;
-    const starEls = this.ui.stars.querySelectorAll('.star');
-    starEls.forEach((s, i) => s.classList.toggle('on', i < stars));
+
+    this.hud.showWin({
+      shots: this.shots,
+      par: level.par,
+      stars: this._stars(this.shots, level.par),
+      bestText: isBest ? '★ NEW BEST!' : `Best: ${best} shots`,
+    });
     this._updateHud(); // reflect any airstrike replenishment
-    setTimeout(() => this.ui.winScreen.classList.remove('hidden'), 700);
   }
 
   _stars(shots, par) {
     if (shots <= par) return 3;
-    if (shots <= par + 2) return 2;
+    if (shots <= par + STAR_PAR_OFFSET_2) return 2;
     return 1;
   }
 
   // ---- juice ----------------------------------------------------------------
 
   _updateHud() {
-    this.ui.shots.textContent = this.shots;
-    this.ui.airstrikeCount.textContent = this.store.airstrikes;
-    this.ui.airstrikeBtn.disabled = this.store.airstrikes <= 0;
-  }
-
-  _flash(x, y) {
-    let f = document.querySelector('.flash');
-    if (!f) {
-      f = document.createElement('div');
-      f.className = 'flash';
-      document.getElementById('app').appendChild(f);
-    }
-    f.style.setProperty('--fx', `${x}px`);
-    f.style.setProperty('--fy', `${y}px`);
-    f.classList.remove('go');
-    void f.offsetWidth; // restart animation
-    f.classList.add('go');
+    this.hud.setShots(this.shots);
+    this.hud.setAirstrikes(this.store.airstrikes);
   }
 
   _kick(amount) {
