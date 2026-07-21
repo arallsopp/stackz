@@ -16,6 +16,7 @@ export class Hud {
       airstrikeBtn: el('airstrike-btn'),
       airstrikeCount: el('airstrike-count'),
       muteBtn: el('mute-btn'),
+      skipBtn: el('skip-btn'),
       loading: el('loading'),
       startScreen: el('start-screen'),
       winScreen: el('win-screen'),
@@ -42,6 +43,10 @@ export class Hud {
       e.stopPropagation();
       handlers.onToggleMute?.();
     });
+    this.el.skipBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      handlers.onSkip?.();
+    });
   }
 
   hideLoading() {
@@ -54,6 +59,7 @@ export class Hud {
     this.el.hud.classList.remove('hidden');
     this.el.airstrikeBtn.classList.remove('hidden');
     this.el.muteBtn.classList.remove('hidden');
+    this.el.skipBtn.classList.remove('hidden');
   }
 
   setLevel(n) {

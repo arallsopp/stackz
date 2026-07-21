@@ -176,6 +176,31 @@ body {
   border-color: rgba(255, 255, 255, 0.18);
 }
 
+/* ---------- Skip button (dev / level-design aid) ---------- */
+.skipbtn {
+  position: absolute;
+  top: max(14px, env(safe-area-inset-top));
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 20;
+  padding: 7px 14px;
+  font-family: inherit;
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: 2px;
+  color: var(--ink);
+  background: rgba(138, 91, 255, 0.14);
+  border: 1px solid rgba(138, 91, 255, 0.5);
+  border-radius: 999px;
+  backdrop-filter: blur(6px);
+  cursor: pointer;
+  opacity: 0.75;
+  transition: transform 0.08s ease, opacity 0.15s ease;
+}
+.skipbtn:active {
+  transform: translateX(-50%) scale(0.92);
+}
+
 /* ---------- Overlays ---------- */
 .overlay {
   position: absolute;

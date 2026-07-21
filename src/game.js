@@ -92,6 +92,11 @@ export class Game {
         this.loadLevel((this.levelIndex + 1) % LEVELS.length);
       },
       onAirstrike: () => this._callAirstrike(),
+      // Dev/level-design aid: jump straight to the next level from any state.
+      onSkip: () => {
+        this.audio.click();
+        this.loadLevel((this.levelIndex + 1) % LEVELS.length);
+      },
       onToggleMute: () => {
         this.audio.unlock(); // doubles as an iOS unlock gesture
         this.hud.setMuted(this.audio.toggle());
@@ -206,6 +211,9 @@ export class Game {
 
   _spawnBlock(spec) {
     const pos = new THREE.Vector3(...spec.pos);
+    // Optional per-block tuning (undefined falls back to physics defaults): low
+    // friction makes toppled pieces slide off the table; density skews mass.
+    const opts = { density: spec.density, friction: spec.friction, restitution: spec.restitution };
     if (spec.shape === 'box') {
       const [w, h, d] = spec.size;
       let quat = null;
@@ -213,7 +221,7 @@ export class Game {
         const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(...spec.rot));
         quat = { x: q.x, y: q.y, z: q.z, w: q.w };
       }
-      const body = this.physics.addBox(pos, { x: w / 2, y: h / 2, z: d / 2 }, quat);
+      const body = this.physics.addBox(pos, { x: w / 2, y: h / 2, z: d / 2 }, quat, opts);
       const mesh = this.renderer.makeBox(spec.size, spec.color);
       this.blocks.push({ mesh, body, cleared: false });
     } else if (spec.shape === 'cyl') {
@@ -222,7 +230,7 @@ export class Game {
       if (spec.axis === 'x') q.setFromAxisAngle(new THREE.Vector3(0, 0, 1), Math.PI / 2);
       else if (spec.axis === 'z') q.setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2);
       const quat = { x: q.x, y: q.y, z: q.z, w: q.w };
-      const body = this.physics.addCylinder(pos, spec.height / 2, spec.radius, quat);
+      const body = this.physics.addCylinder(pos, spec.height / 2, spec.radius, quat, opts);
       const mesh = this.renderer.makeCylinder(spec.radius, spec.height, spec.color);
       this.blocks.push({ mesh, body, cleared: false });
     }

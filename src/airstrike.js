@@ -401,9 +401,10 @@ export class Airstrike {
     this._speed = this.curve.getLength() / 6.0;
     this._u = 0;
     this._duration = 6.0;
-    this._dropTimer = 0;
-    this._dropCount = 0;
-    this._maxDrops = 8;
+    // ONE critical hit, not a carpet of bombs. A single heavy bomb + a single big
+    // blast keeps the framerate smooth (many concurrent explosions + point lights
+    // were the frame-drop culprit) and reads as a decisive strike.
+    this._dropped = false;
 
     this.renderer.scene.add(this.plane);
 
@@ -424,17 +425,17 @@ export class Airstrike {
 
   _spawnBomb() {
     const p = this.plane.position;
-    // Aim each bomb at the target footprint (with a little spread) so the run
-    // actually lands on the structure regardless of the plane's exact position.
+    // Aim the single bomb dead-centre on the stack so the critical hit lands true.
     const target = (this._bombTarget ||= new THREE.Vector3());
-    target.set((Math.random() - 0.5) * 1.4, 0.8, (Math.random() - 0.5) * 1.4);
+    target.set(0, 0.8, 0);
     const dir = target.sub(p).normalize();
-    const speed = 10;
+    const speed = 13;
     const vel = { x: dir.x * speed, y: dir.y * speed, z: dir.z * speed };
-    // Spawn below the plane's collider so it isn't immediately swatted.
-    const body = this.physics.addBall({ x: p.x, y: p.y - 1.0, z: p.z }, vel, 0.22);
+    // Spawn below the plane's collider so it isn't immediately swatted. Heavier +
+    // bigger than the old cluster bomblets — this is the one decisive round.
+    const body = this.physics.addBall({ x: p.x, y: p.y - 1.0, z: p.z }, vel, 0.32);
     const mesh = new THREE.Mesh(
-      new THREE.CapsuleGeometry(0.16, 0.5, 6, 10),
+      new THREE.CapsuleGeometry(0.24, 0.7, 6, 10),
       new THREE.MeshStandardMaterial({
         color: 0xffe45e,
         emissive: 0xff8a3d,
@@ -455,17 +456,19 @@ export class Airstrike {
     // off earlier may already have been culled from the physics world, and
     // touching a freed body panics wasm ("unreachable") and poisons the instance.
     const targets = this.getLiveBodies ? this.getLiveBodies() : this.targets;
-    this.physics.explode(center, 5.2, 16, targets);
+    // One big blast: wide enough to reach the whole footprint, strong enough to
+    // clear a tall tower on its own (there is no second bomb to finish the job).
+    this.physics.explode(center, 8.5, 24, targets);
     const shell = new THREE.Mesh(
-      new THREE.SphereGeometry(0.4, 16, 12),
-      new THREE.MeshBasicMaterial({ color: 0xffe45e, transparent: true, opacity: 0.9 })
+      new THREE.SphereGeometry(0.5, 18, 14),
+      new THREE.MeshBasicMaterial({ color: 0xffe45e, transparent: true, opacity: 0.95 })
     );
     shell.position.copy(center);
     this.renderer.scene.add(shell);
-    const light = new THREE.PointLight(0xffb347, 6, 14, 2);
+    const light = new THREE.PointLight(0xffb347, 12, 22, 2);
     light.position.copy(center);
     this.renderer.scene.add(light);
-    this.explosions.push({ mesh: shell, light, life: 0, max: 0.55 });
+    this.explosions.push({ mesh: shell, light, life: 0, max: 0.7 });
     this.onDetonate?.(center);
   }
 
@@ -488,14 +491,10 @@ export class Airstrike {
       // Carry the physics collider with the plane.
       if (this._collider) this.physics.movePlaneCollider(pos, this.plane.quaternion);
 
-      // Drop the payload during the low pass over the target.
-      if (u > 0.25 && u < 0.37) {
-        this._dropTimer -= dt;
-        if (this._dropTimer <= 0 && this._dropCount < this._maxDrops) {
-          this._spawnBomb();
-          this._dropCount++;
-          this._dropTimer = 0.09;
-        }
+      // Release the single critical bomb at the apex of the low pass over the target.
+      if (!this._dropped && u > 0.31) {
+        this._spawnBomb();
+        this._dropped = true;
       }
 
       if (this._u >= 1) {
@@ -526,9 +525,9 @@ export class Airstrike {
       const e = this.explosions[i];
       e.life += dt;
       const k = e.life / e.max;
-      e.mesh.scale.setScalar(0.4 + k * 5.5);
-      e.mesh.material.opacity = Math.max(0, 0.9 * (1 - k));
-      e.light.intensity = 6 * (1 - k);
+      e.mesh.scale.setScalar(0.5 + k * 9);
+      e.mesh.material.opacity = Math.max(0, 0.95 * (1 - k));
+      e.light.intensity = 12 * (1 - k);
       if (e.life >= e.max) {
         this.renderer.remove(e.mesh);
         this.renderer.scene.remove(e.light);
