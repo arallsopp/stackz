@@ -61,12 +61,38 @@ test/debug handle (`__game.loadLevel(n)`, `__game.store`, `__game._frames`).
 
 Append to `LEVELS` in `levels.js`. Fields:
 `{ name, par, spin?, shield?: { arms, speed }, blocks: [...] }`. Block specs:
-`{ shape:'box', pos:[x,y,z], size:[w,h,d], rot?:[x,y,z], color }` or
-`{ shape:'cyl', pos:[x,y,z], radius, height, axis:'x'|'y'|'z', color }`. Author
-blocks resting on the table (y>0) with exact contacts (a tiny `GAP`) so they load
-stable. Helpers `column/jenga/spire/wall` build common structures. `spin`
-defaults to `DEFAULT_SPIN` if omitted. Airstrikes are a **global** bank (Store),
-not per-level.
+`{ shape:'box', pos:[x,y,z], size:[w,h,d], rot?:[x,y,z], color, friction?, restitution?, density? }`
+or `{ shape:'cyl', pos:[x,y,z], radius, height, axis:'x'|'y'|'z', color, ... }`.
+The optional physics fields fall through to Rapier defaults when omitted; **low
+`friction` is the main tool for fragility** — it lets toppled pieces slide off the
+table. Author blocks resting on the table (y>0) with exact contacts (a tiny `GAP`)
+so they load stable. `spin` defaults to `DEFAULT_SPIN` if omitted. Airstrikes are
+a **global** bank (Store), not per-level.
+
+Helpers: `column / jenga / spire / wall / dominoes / pins / ramp` build common
+structures; `rotateY90` composes walls into a ring. `ramp({ dir, roller })` makes
+an elevated shelf + sloped plank, with an optional boulder held by a low **chock**
+at the lip (idle-stable, but a real hit rolls it over and down); `dir` (+1/-1) is
+the downhill direction so two ramps can face each other.
+
+Two hard constraints, both from the win rule (**every block must clear off an
+edge**):
+- **Things that fall flat stay put.** A domino/pin toppling onto the table does
+  NOT clear — only pieces that go over an edge do. Keep footprints tight and
+  friction low so collapses slide off; a full jenga piles up and is near-unclearable.
+- **A cylinder can't rest on a slope** (rolls) and drifts off a bare flat shelf
+  as it settles — always chock a parked roller. Keep a ramp's plank foot clear of
+  any pins/dominoes below it (the plank landing among them shoves them off at load).
+
+**Block budget ~28/level** (`MAX_BLOCKS`, dev-warns): Rapier/mobile Safari and the
+tight ball budget both punish big piles.
+
+**Par is set by human playtest, not guessed.** Headless drives verify *stability*
+(loads solid, never self-solves, no WASM panic) reliably; they can't judge
+difficulty. Ship provisional pars, then calibrate from the player's real attempts.
+
+There's a **SKIP** button (top-centre, `#skip-btn` → `onSkip`) to jump levels while
+authoring/testing.
 
 ## Physics gotchas (learned the hard way — don't reintroduce)
 
