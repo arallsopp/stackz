@@ -1,8 +1,9 @@
 import { THREE } from './render.js';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 
-// The comedic payoff: a cartoon C-130 Hercules flies over and carpet-bombs the
-// stack. The plane is drawn as a camouflaged cartoon sprite (angry eyes, red
-// trim, spinning props) on a billboard — matching the classic cartoon look.
+// The comedic payoff: a C-130 Hercules flies over and carpet-bombs the stack.
+// Uses a real low-poly glTF model when available (slava2019, CC-BY-4.0), and
+// falls back to a hand-drawn cartoon sprite if the model fails to load.
 export class Airstrike {
   constructor(renderer, physics) {
     this.renderer = renderer;
@@ -16,6 +17,49 @@ export class Airstrike {
     this.onComplete = null;
     this._planeTex = null;
     this._propTex = null;
+    this.template = null; // normalised glTF model, reused per run
+    this._planeHalfH = 1;
+  }
+
+  // Load + normalise the glTF C-130. The model is centred and its fuselage
+  // aligned so the nose points along local -Z; the outer `template` group is then
+  // steered each frame with lookAt() so the nose always follows the flight path.
+  // Safe to await; on failure we keep the cartoon sprite.
+  async loadModel(url) {
+    const gltf = await new GLTFLoader().loadAsync(url);
+    const model = gltf.scene;
+    model.traverse((o) => {
+      if (o.isMesh) {
+        o.castShadow = true;
+        o.frustumCulled = false;
+      }
+    });
+
+    const box = new THREE.Box3().setFromObject(model);
+    const size = new THREE.Vector3();
+    const center = new THREE.Vector3();
+    box.getSize(size);
+    box.getCenter(center);
+
+    // Holder carries the centring + fuselage alignment (the "rig"); the outer
+    // template is what we position and lookAt during flight.
+    const holder = new THREE.Group();
+    model.position.sub(center);
+    holder.add(model);
+    // Align the fuselage (longest horizontal axis) with Z.
+    if (size.x > size.z) holder.rotation.y = Math.PI / 2;
+    const s = 5.5 / Math.max(size.x, size.z);
+    holder.scale.setScalar(s);
+    this._planeHalfH = (size.y * s) / 2;
+    // Half-extents (wings X, height Y, fuselage Z) for the flying collider.
+    this._planeHalf = { x: (size.x * s) / 2, y: (size.y * s) / 2, z: (size.z * s) / 2 };
+
+    const template = new THREE.Group();
+    template.add(holder);
+    this.template = template;
+    // +1: nose is local -Z (lookAt target ahead). Flip to -1 if it flies backwards.
+    this._noseSign = 1;
+    return true;
   }
 
   get busy() {
@@ -24,8 +68,9 @@ export class Airstrike {
 
   reset() {
     this.audio?.stopDrone();
-    if (this.plane) this.renderer.remove(this.plane);
-    this.plane = null;
+    this._removePlane();
+    this.physics.removePlaneCollider();
+    this._collider = null;
     for (const b of this.bombs) {
       this.physics.remove(b.body);
       this.renderer.remove(b.mesh);
@@ -255,7 +300,16 @@ export class Airstrike {
     return tex;
   }
 
-  _buildPlane(Wp) {
+  // The model is a single instance reused each run (only one plane flies at a
+  // time), so removal must NOT dispose its shared geometry/materials.
+  _removePlane() {
+    if (!this.plane) return;
+    if (this.plane === this.template) this.renderer.scene.remove(this.plane);
+    else this.renderer.remove(this.plane); // sprite fallback: dispose its resources
+    this.plane = null;
+  }
+
+  _buildPlaneSprite(Wp) {
     const Hp = Wp / 2;
     const group = new THREE.Group();
 
@@ -282,30 +336,71 @@ export class Airstrike {
   }
 
   // Launch a run over `bodies`. `bounds` = { maxY, hx } from the current level.
+  // The plane enters over the camera, flies away over the target dropping its
+  // payload, loops in the background, then returns over the camera and exits.
   launch(bodies, bounds = { maxY: 4, hx: 2 }) {
     if (this.active) return false;
     this.targets = bodies;
     const Wp = 3.8;
-    this.plane = this._buildPlane(Wp);
-    // Fly just above the crown, but keep it inside the top of the viewport.
+    this.props = [];
+    this.plane = this.template || this._buildPlaneSprite(Wp);
+
+    const cam = this.renderer.camera.position;
+    const camY = cam.y;
+    const camZ = cam.z;
     const top = this.renderer.viewTopY ?? bounds.maxY + 2;
-    this._flyY = Math.min(bounds.maxY + 1.2, top - Wp / 4 - 0.2);
-    this._dropHalf = bounds.hx + 0.8;
-    this.plane.position.set(-9, this._flyY, 0.6);
-    this.renderer.scene.add(this.plane);
-    this.audio?.startDrone();
-    this.active = true;
-    this._dropTimer = 0.25;
+    const halfH = this.template ? this._planeHalfH : Wp / 4;
+    // Bomb-run altitude: clears a normal tower (bombs do the work); the collider
+    // only knocks blocks/debris that poke up into the flight path.
+    const dropY = Math.min(bounds.maxY + 1.3, top - halfH - 0.2);
+
+    const V = THREE.Vector3;
+    const pts = [
+      new V(0, camY + 3.5, camZ + 6), // behind/above camera (enters over the top)
+      new V(0, dropY + 0.8, camZ * 0.45), // crests into view, top-middle, nose away
+      new V(0, dropY, -0.6), // fairly level pass over the target (drop)
+      new V(0, dropY + 0.8, -camZ * 0.7), // gentle climb away into the background
+      new V(camZ * 0.6, dropY + 2.5, -camZ * 1.1), // far-background loop apex
+      new V(camZ * 0.55, dropY + 1.5, -camZ * 0.05), // returning down the side
+      new V(camZ * 0.22, camY + 1.2, camZ * 0.6), // back over the camera (nose toward us)
+      new V(camZ * 0.06, camY + 3.5, camZ + 7), // exits up and behind
+    ];
+    this.curve = new THREE.CatmullRomCurve3(pts, false, 'centripetal');
+    this._speed = this.curve.getLength() / 6.0;
+    this._u = 0;
+    this._duration = 6.0;
+    this._dropTimer = 0;
     this._dropCount = 0;
     this._maxDrops = 8;
-    this.speed = 6.5;
-    this._t = 0;
+
+    this.renderer.scene.add(this.plane);
+
+    // Kinematic collider so the plane physically knocks blocks it clips. Kept
+    // tight so it only catches things sticking up into the (fairly level) pass.
+    // Spawn it at the flight start (P0), far from the stack.
+    if (this._planeHalf) {
+      this._collider = this.physics.addPlaneCollider(
+        { x: this._planeHalf.x * 0.7, y: this._planeHalf.y * 0.55, z: this._planeHalf.z * 0.7 },
+        pts[0]
+      );
+    }
+
+    this.audio?.startDrone();
+    this.active = true;
     return true;
   }
 
   _spawnBomb() {
     const p = this.plane.position;
-    const body = this.physics.addBall({ x: p.x, y: p.y - 0.6, z: 0 }, { x: 2.5, y: -2, z: 0 }, 0.22);
+    // Aim each bomb at the target footprint (with a little spread) so the run
+    // actually lands on the structure regardless of the plane's exact position.
+    const target = (this._bombTarget ||= new THREE.Vector3());
+    target.set((Math.random() - 0.5) * 1.4, 0.8, (Math.random() - 0.5) * 1.4);
+    const dir = target.sub(p).normalize();
+    const speed = 10;
+    const vel = { x: dir.x * speed, y: dir.y * speed, z: dir.z * speed };
+    // Spawn below the plane's collider so it isn't immediately swatted.
+    const body = this.physics.addBall({ x: p.x, y: p.y - 1.0, z: p.z }, vel, 0.22);
     const mesh = new THREE.Mesh(
       new THREE.CapsuleGeometry(0.16, 0.5, 6, 10),
       new THREE.MeshStandardMaterial({
@@ -324,7 +419,11 @@ export class Airstrike {
 
   _detonate(center) {
     this.audio?.explosion();
-    this.physics.explode(center, 5.2, 16, this.targets);
+    // Use the CURRENTLY live bodies, not the snapshot from launch: blocks knocked
+    // off earlier may already have been culled from the physics world, and
+    // touching a freed body panics wasm ("unreachable") and poisons the instance.
+    const targets = this.getLiveBodies ? this.getLiveBodies() : this.targets;
+    this.physics.explode(center, 5.2, 16, targets);
     const shell = new THREE.Mesh(
       new THREE.SphereGeometry(0.4, 16, 12),
       new THREE.MeshBasicMaterial({ color: 0xffe45e, transparent: true, opacity: 0.9 })
@@ -340,21 +439,37 @@ export class Airstrike {
 
   update(dt) {
     if (this.active && this.plane) {
-      this._t += dt;
-      this.plane.position.x += this.speed * dt;
-      this.plane.position.y = this._flyY + Math.sin(this._t * 3) * 0.15;
+      this._u += dt / this._duration;
+      const u = Math.min(this._u, 1);
+      const pos = this.curve.getPointAt(u, (this._pv ||= new THREE.Vector3()));
+      const tan = this.curve.getTangentAt(u, (this._tv ||= new THREE.Vector3()));
+      this.plane.position.copy(pos);
+      if (this.template) {
+        // Point the nose along the flight tangent (lookAt aims local -Z).
+        const look = (this._lv ||= new THREE.Vector3()).copy(pos).addScaledVector(tan, this._noseSign);
+        this.plane.lookAt(look);
+      } else {
+        this.plane.quaternion.copy(this.renderer.camera.quaternion); // sprite: face camera
+      }
       for (const prop of this.props) prop.rotation.z -= dt * 34;
 
-      const overTarget = Math.abs(this.plane.position.x) < this._dropHalf;
-      this._dropTimer -= dt;
-      if (overTarget && this._dropTimer <= 0 && this._dropCount < this._maxDrops) {
-        this._spawnBomb();
-        this._dropCount++;
-        this._dropTimer = 0.13;
+      // Carry the physics collider with the plane.
+      if (this._collider) this.physics.movePlaneCollider(pos, this.plane.quaternion);
+
+      // Drop the payload during the low pass over the target.
+      if (u > 0.25 && u < 0.37) {
+        this._dropTimer -= dt;
+        if (this._dropTimer <= 0 && this._dropCount < this._maxDrops) {
+          this._spawnBomb();
+          this._dropCount++;
+          this._dropTimer = 0.09;
+        }
       }
-      if (this.plane.position.x > 10) {
-        this.renderer.remove(this.plane);
-        this.plane = null;
+
+      if (this._u >= 1) {
+        this._removePlane();
+        this.physics.removePlaneCollider();
+        this._collider = null;
         this.active = false;
         this.audio?.stopDrone();
       }

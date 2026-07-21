@@ -231,6 +231,15 @@ body {
   opacity: 0.55;
 }
 
+.credit {
+  margin-top: 14px;
+  font-size: 10px;
+  opacity: 0.4;
+}
+.credit a {
+  color: inherit;
+}
+
 .btn {
   font-family: inherit;
   font-weight: 800;

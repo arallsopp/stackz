@@ -24,7 +24,32 @@ export class Physics {
     this.eventQueue = new RAPIER.EventQueue(true);
     this.spin = spin;
     this.platformAngle = 0;
+    this.planeCollider = null; // stale ref from the previous world
     this._addPlatform(platform, spin);
+  }
+
+  // A moving kinematic box the Hercules carries, so it physically shoves any
+  // blocks it clips during a low pass. Must spawn at the plane's start position
+  // (far from the stack) — spawning at the origin would teleport through the
+  // tower on the first step and launch everything into orbit.
+  addPlaneCollider(half, pos) {
+    const desc = RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(pos.x, pos.y, pos.z);
+    const body = this.world.createRigidBody(desc);
+    const col = RAPIER.ColliderDesc.cuboid(half.x, half.y, half.z);
+    this.world.createCollider(col, body);
+    this.planeCollider = body;
+    return body;
+  }
+
+  movePlaneCollider(pos, quat) {
+    if (!this.planeCollider) return;
+    this.planeCollider.setNextKinematicTranslation(pos);
+    this.planeCollider.setNextKinematicRotation(quat);
+  }
+
+  removePlaneCollider() {
+    if (this.planeCollider && this.world) this.world.removeRigidBody(this.planeCollider);
+    this.planeCollider = null;
   }
 
   _addPlatform({ hx, hy, hz }, spin) {
@@ -124,14 +149,20 @@ export class Physics {
       this.platformBody.setNextKinematicRotation({ x: 0, y: Math.sin(a), z: 0, w: Math.cos(a) });
     }
     this.world.step(this.eventQueue);
-    // Turn newly-started contacts into impact events for audio. Strength is the
-    // approach speed of the faster of the two bodies at the moment of contact.
+    // Turn newly-started contacts into impact events for audio. IMPORTANT: only
+    // collect handles inside the drain callback — calling world.getCollider()
+    // there re-enters Rapier ("recursive use of an object" / unsafe aliasing).
+    // Look the bodies up afterwards, outside the callback.
     if (this.onImpact) {
+      const pairs = (this._pairs ||= []);
+      pairs.length = 0;
       this.eventQueue.drainCollisionEvents((h1, h2, started) => {
-        if (!started) return;
-        const s = Math.max(this._bodySpeed(h1), this._bodySpeed(h2));
-        if (s > 1.2) this.onImpact(s);
+        if (started) pairs.push(h1, h2);
       });
+      for (let i = 0; i < pairs.length; i += 2) {
+        const s = Math.max(this._bodySpeed(pairs[i]), this._bodySpeed(pairs[i + 1]));
+        if (s > 1.2) this.onImpact(s);
+      }
     }
   }
 

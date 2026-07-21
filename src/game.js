@@ -30,6 +30,14 @@ export class Game {
     this.airstrike.audio = this.audio;
     this.airstrike.onDetonate = () => this._kick(0.5);
     this.airstrike.onComplete = () => this._checkWin(true);
+    // Always explode against bodies still in the world (never a stale snapshot).
+    this.airstrike.getLiveBodies = () => this.blocks.map((b) => b.body);
+    // Load the real C-130 model; if it fails we keep the cartoon sprite.
+    try {
+      await this.airstrike.loadModel(import.meta.env.BASE_URL + 'models/c130-hercules/scene.gltf');
+    } catch (e) {
+      console.warn('C-130 model failed to load, using sprite fallback:', e);
+    }
     this._camBase.copy(this.renderer.camera.position);
 
     // Physical collision sounds (suppressed briefly after each level loads while
@@ -246,6 +254,7 @@ export class Game {
 
   _frame(t) {
     requestAnimationFrame((tt) => this._frame(tt));
+    this._frames = (this._frames || 0) + 1;
     if (!this._last) this._last = t;
     let dt = (t - this._last) / 1000;
     this._last = t;

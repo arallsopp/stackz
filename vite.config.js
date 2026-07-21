@@ -15,7 +15,7 @@ export default defineConfig({
       workbox: {
         // Cache everything the built app needs so the PWA runs fully offline,
         // including the inlined Rapier wasm chunk.
-        globPatterns: ['**/*.{js,css,html,svg,png,ico,wasm}'],
+        globPatterns: ['**/*.{js,css,html,svg,png,ico,wasm,gltf,bin,jpg,jpeg,glb}'],
         maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
       },
       manifest: {

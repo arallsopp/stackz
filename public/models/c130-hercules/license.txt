@@ -1,0 +1,11 @@
+Model Information:
+* title:	c130-hercules
+* source:	https://sketchfab.com/3d-models/c130-hercules-d97fffc327fc45779b4c0b36c12b61da
+* author:	slava2019 (https://sketchfab.com/slava2019)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "c130-hercules" (https://sketchfab.com/3d-models/c130-hercules-d97fffc327fc45779b4c0b36c12b61da) by slava2019 (https://sketchfab.com/slava2019) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

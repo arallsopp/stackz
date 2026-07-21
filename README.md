@@ -57,6 +57,12 @@ blocks remain. Six levels ship, favouring tall, toppling structures (Jenga inclu
 - **Airstrike power/radius:** `physics.explode(...)` call in `airstrike.js#_detonate`.
 - **Platform size:** `PLATFORM` in `src/levels.js`.
 
+## Credits
+
+This work is based on ["c130-hercules"](https://sketchfab.com/3d-models/c130-hercules-d97fffc327fc45779b4c0b36c12b61da)
+by [slava2019](https://sketchfab.com/slava2019) licensed under
+[CC-BY-4.0](http://creativecommons.org/licenses/by/4.0/).
+
 ## Notes
 
 - `window.__game` is exposed for debugging (jump levels via
