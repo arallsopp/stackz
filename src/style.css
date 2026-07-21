@@ -147,6 +147,35 @@ body {
   color: var(--yellow);
 }
 
+/* ---------- Icon button (mute) ---------- */
+.iconbtn {
+  position: absolute;
+  bottom: max(22px, env(safe-area-inset-bottom));
+  left: 18px;
+  z-index: 20;
+  width: 52px;
+  height: 52px;
+  display: grid;
+  place-items: center;
+  font-size: 22px;
+  line-height: 1;
+  color: var(--ink);
+  background: var(--pill);
+  border: 1px solid var(--pill-border);
+  border-radius: 999px;
+  backdrop-filter: blur(6px);
+  box-shadow: 0 0 18px rgba(18, 247, 255, 0.12);
+  cursor: pointer;
+  transition: transform 0.08s ease, filter 0.15s ease;
+}
+.iconbtn:active {
+  transform: scale(0.92);
+}
+.iconbtn.is-muted {
+  filter: grayscale(0.5) brightness(0.8);
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
 /* ---------- Overlays ---------- */
 .overlay {
   position: absolute;

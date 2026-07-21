@@ -1,6 +1,7 @@
 import { Renderer, THREE } from './render.js';
 import { Physics } from './physics.js';
 import { Airstrike } from './airstrike.js';
+import { Audio } from './audio.js';
 import { LEVELS } from './levels.js';
 
 const FIXED = 1 / 60;
@@ -24,10 +25,20 @@ export class Game {
   async init() {
     this.renderer = new Renderer(document.getElementById('scene'));
     this.physics = await Physics.load();
+    this.audio = new Audio();
     this.airstrike = new Airstrike(this.renderer, this.physics);
+    this.airstrike.audio = this.audio;
     this.airstrike.onDetonate = () => this._kick(0.5);
     this.airstrike.onComplete = () => this._checkWin(true);
     this._camBase.copy(this.renderer.camera.position);
+
+    // Physical collision sounds (suppressed briefly after each level loads while
+    // the stack settles, so we don't get a clatter on spawn).
+    this._impactMuteUntil = 0;
+    this.physics.onImpact = (strength) => {
+      if (performance.now() < this._impactMuteUntil) return;
+      this.audio.impact(strength);
+    };
 
     this._bindUI();
     window.addEventListener('resize', () => this._onResize());
@@ -45,16 +56,26 @@ export class Game {
       par: el('hud-par'),
       airstrikeBtn: el('airstrike-btn'),
       airstrikeCount: el('airstrike-count'),
+      muteBtn: el('mute-btn'),
       startScreen: el('start-screen'),
       winScreen: el('win-screen'),
       winShots: el('win-shots'),
       winPar: el('win-par'),
       stars: el('stars'),
     };
+    this._syncMuteButton();
 
-    el('start-btn').addEventListener('click', () => this._start());
-    el('replay-btn').addEventListener('click', () => this.loadLevel(this.levelIndex));
+    el('start-btn').addEventListener('click', () => {
+      this.audio.unlock();
+      this.audio.click();
+      this._start();
+    });
+    el('replay-btn').addEventListener('click', () => {
+      this.audio.click();
+      this.loadLevel(this.levelIndex);
+    });
     el('next-btn').addEventListener('click', () => {
+      this.audio.click();
       this.levelIndex = (this.levelIndex + 1) % LEVELS.length;
       this.loadLevel(this.levelIndex);
     });
@@ -62,19 +83,34 @@ export class Game {
       e.stopPropagation();
       this._callAirstrike();
     });
+    this.ui.muteBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.audio.unlock(); // also serves as an unlock gesture on iOS
+      this.audio.toggle();
+      this._syncMuteButton();
+    });
 
     // Tap-to-fire on the canvas.
     const canvas = this.renderer.canvas;
     canvas.addEventListener('pointerdown', (e) => {
+      this.audio.resume(); // keep the context alive across backgrounding
       if (this.state !== 'playing') return;
       this._fire(e.clientX, e.clientY);
     });
+  }
+
+  _syncMuteButton() {
+    const muted = this.audio.isMuted();
+    this.ui.muteBtn.textContent = muted ? '🔇' : '🔊';
+    this.ui.muteBtn.classList.toggle('is-muted', muted);
+    this.ui.muteBtn.setAttribute('aria-pressed', String(muted));
   }
 
   _start() {
     this.ui.startScreen.classList.add('hidden');
     this.ui.hud.classList.remove('hidden');
     this.ui.airstrikeBtn.classList.remove('hidden');
+    this.ui.muteBtn.classList.remove('hidden');
     this.loadLevel(0);
   }
 
@@ -100,6 +136,7 @@ export class Game {
     this.shots = 0;
     this.airstrikesLeft = level.airstrikes;
     this.state = 'playing';
+    this._impactMuteUntil = performance.now() + 500; // let the stack settle quietly
 
     for (const spec of level.blocks) this._spawnBlock(spec);
 
@@ -192,10 +229,12 @@ export class Game {
     this._updateHud();
     this._flash(clientX, clientY);
     this._kick(0.18);
+    this.audio.fire();
   }
 
   _callAirstrike() {
     if (this.state !== 'playing' || this.airstrikesLeft <= 0 || this.airstrike.active) return;
+    this.audio.click();
     const live = this.blocks.filter((b) => !b.cleared).map((b) => b.body);
     if (!this.airstrike.launch(live, this._bounds)) return;
     this.airstrikesLeft--;
@@ -270,6 +309,7 @@ export class Game {
 
   _win() {
     this.state = 'won';
+    this.audio.win();
     const level = LEVELS[this.levelIndex];
     const stars = this._stars(this.shots, level.par);
     this.ui.winShots.textContent = this.shots;

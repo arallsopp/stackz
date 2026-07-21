@@ -39,7 +39,8 @@ export class Physics {
     const col = RAPIER.ColliderDesc.cuboid(halfExtents.x, halfExtents.y, halfExtents.z)
       .setDensity(density)
       .setFriction(friction)
-      .setRestitution(restitution);
+      .setRestitution(restitution)
+      .setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS);
     this.world.createCollider(col, body);
     return body;
   }
@@ -55,7 +56,8 @@ export class Physics {
     const col = RAPIER.ColliderDesc.cylinder(halfHeight, radius)
       .setDensity(density)
       .setFriction(friction)
-      .setRestitution(restitution);
+      .setRestitution(restitution)
+      .setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS);
     this.world.createCollider(col, body);
     return body;
   }
@@ -70,7 +72,8 @@ export class Physics {
     const col = RAPIER.ColliderDesc.ball(radius)
       .setDensity(6.0)
       .setFriction(0.4)
-      .setRestitution(0.25);
+      .setRestitution(0.25)
+      .setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS);
     this.world.createCollider(col, body);
     return body;
   }
@@ -106,6 +109,23 @@ export class Physics {
 
   step() {
     this.world.step(this.eventQueue);
+    // Turn newly-started contacts into impact events for audio. Strength is the
+    // approach speed of the faster of the two bodies at the moment of contact.
+    if (this.onImpact) {
+      this.eventQueue.drainCollisionEvents((h1, h2, started) => {
+        if (!started) return;
+        const s = Math.max(this._bodySpeed(h1), this._bodySpeed(h2));
+        if (s > 1.2) this.onImpact(s);
+      });
+    }
+  }
+
+  _bodySpeed(colliderHandle) {
+    const col = this.world.getCollider(colliderHandle);
+    const body = col?.parent();
+    if (!body) return 0;
+    const v = body.linvel();
+    return Math.hypot(v.x, v.y, v.z);
   }
 
   remove(body) {

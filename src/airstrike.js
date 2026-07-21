@@ -23,6 +23,7 @@ export class Airstrike {
   }
 
   reset() {
+    this.audio?.stopDrone();
     if (this.plane) this.renderer.remove(this.plane);
     this.plane = null;
     for (const b of this.bombs) {
@@ -292,6 +293,7 @@ export class Airstrike {
     this._dropHalf = bounds.hx + 0.8;
     this.plane.position.set(-9, this._flyY, 0.6);
     this.renderer.scene.add(this.plane);
+    this.audio?.startDrone();
     this.active = true;
     this._dropTimer = 0.25;
     this._dropCount = 0;
@@ -317,9 +319,11 @@ export class Airstrike {
     mesh.castShadow = true;
     this.renderer.scene.add(mesh);
     this.bombs.push({ body, mesh, life: 0 });
+    this.audio?.bombDrop();
   }
 
   _detonate(center) {
+    this.audio?.explosion();
     this.physics.explode(center, 5.2, 16, this.targets);
     const shell = new THREE.Mesh(
       new THREE.SphereGeometry(0.4, 16, 12),
@@ -352,6 +356,7 @@ export class Airstrike {
         this.renderer.remove(this.plane);
         this.plane = null;
         this.active = false;
+        this.audio?.stopDrone();
       }
     }
 
