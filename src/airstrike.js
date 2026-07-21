@@ -1,24 +1,26 @@
 import { THREE } from './render.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 
-// The comedic payoff: a C-130 Hercules flies over and carpet-bombs the stack.
-// Uses a real low-poly glTF model when available (slava2019, CC-BY-4.0), and
-// falls back to a hand-drawn cartoon sprite if the model fails to load.
+// The C-130 Hercules flies over and air-drops a crate of 5 supply balls, which
+// parachute down into the level and then fly up to top up your ball counter — a
+// resupply, not a bombing run (so it no longer voids your score). Uses a real
+// low-poly glTF model when available (slava2019, CC-BY-4.0), falling back to a
+// hand-drawn cartoon sprite if the model fails to load.
 export class Airstrike {
   constructor(renderer, physics) {
     this.renderer = renderer;
     this.physics = physics;
     this.plane = null;
     this.active = false;
-    this.bombs = [];
-    this.explosions = [];
+    this.supplies = [];
     this.props = [];
-    this.onDetonate = null;
+    this.onSupply = null; // (worldPos) => game delivers +1 ball to the HUD counter
     this.onComplete = null;
     this._planeTex = null;
     this._propTex = null;
     this.template = null; // normalised glTF model, reused per run
     this._planeHalfH = 1;
+    this._maxSupplies = 5;
   }
 
   // Load + normalise the glTF C-130 so the nose points along the holder's -Z and
@@ -95,7 +97,7 @@ export class Airstrike {
   }
 
   get busy() {
-    return this.active || this.bombs.length > 0 || this.explosions.length > 0;
+    return this.active || this.supplies.length > 0;
   }
 
   reset() {
@@ -103,18 +105,13 @@ export class Airstrike {
     this._removePlane();
     this.physics.removePlaneCollider();
     this._collider = null;
-    for (const b of this.bombs) {
-      this.physics.remove(b.body);
-      this.renderer.remove(b.mesh);
+    for (const s of this.supplies) {
+      this.physics.remove(s.body);
+      this.renderer.remove(s.ball);
+      this.renderer.remove(s.canopy);
     }
-    for (const e of this.explosions) {
-      this.renderer.remove(e.mesh);
-      this.renderer.scene.remove(e.light);
-    }
-    this.bombs = [];
-    this.explosions = [];
+    this.supplies = [];
     this.props = [];
-    this.targets = [];
     this.active = false;
     this._wasBusy = false;
   }
@@ -367,12 +364,11 @@ export class Airstrike {
     return group;
   }
 
-  // Launch a run over `bodies`. `bounds` = { maxY, hx } from the current level.
-  // The plane enters over the camera, flies away over the target dropping its
-  // payload, loops in the background, then returns over the camera and exits.
+  // Launch a resupply run. `bounds` = { maxY, hx } from the current level. The
+  // plane enters over the camera, flies away over the target dropping the crate,
+  // loops in the background, then returns over the camera and exits.
   launch(bodies, bounds = { maxY: 4, hx: 2 }) {
     if (this.active) return false;
-    this.targets = bodies;
     const Wp = 3.8;
     this.props = [];
     this.plane = this.template || this._buildPlaneSprite(Wp);
@@ -401,75 +397,51 @@ export class Airstrike {
     this._speed = this.curve.getLength() / 6.0;
     this._u = 0;
     this._duration = 6.0;
-    // ONE critical hit, not a carpet of bombs. A single heavy bomb + a single big
-    // blast keeps the framerate smooth (many concurrent explosions + point lights
-    // were the frame-drop culprit) and reads as a decisive strike.
-    this._dropped = false;
+    // Air-drop the 5-crate resupply, staggered, during the low pass over the target.
+    this._supplyCount = 0;
+    this._supplyTimer = 0;
 
     this.renderer.scene.add(this.plane);
-
-    // Kinematic collider so the plane physically knocks blocks it clips. Kept
-    // tight so it only catches things sticking up into the (fairly level) pass.
-    // Spawn it at the flight start (P0), far from the stack.
-    if (this._planeHalf) {
-      this._collider = this.physics.addPlaneCollider(
-        { x: this._planeHalf.x * 0.7, y: this._planeHalf.y * 0.55, z: this._planeHalf.z * 0.7 },
-        pts[0]
-      );
-    }
 
     this.audio?.startDrone();
     this.active = true;
     return true;
   }
 
-  _spawnBomb() {
+  // A parachuting supply ball: a glowing sphere under a neon canopy.
+  _spawnSupply() {
     const p = this.plane.position;
-    // Aim the single bomb dead-centre on the stack so the critical hit lands true.
-    const target = (this._bombTarget ||= new THREE.Vector3());
-    target.set(0, 0.8, 0);
-    const dir = target.sub(p).normalize();
-    const speed = 13;
-    const vel = { x: dir.x * speed, y: dir.y * speed, z: dir.z * speed };
-    // Spawn below the plane's collider so it isn't immediately swatted. Heavier +
-    // bigger than the old cluster bomblets — this is the one decisive round.
-    const body = this.physics.addBall({ x: p.x, y: p.y - 1.0, z: p.z }, vel, 0.32);
-    const mesh = new THREE.Mesh(
-      new THREE.CapsuleGeometry(0.24, 0.7, 6, 10),
-      new THREE.MeshStandardMaterial({
-        color: 0xffe45e,
-        emissive: 0xff8a3d,
-        emissiveIntensity: 0.9,
-        metalness: 0.6,
-        roughness: 0.3,
-      })
+    const spread = 2.6;
+    const tx = (Math.random() - 0.5) * spread;
+    const tz = (Math.random() - 0.5) * spread;
+    const body = this.physics.addParachute({ x: p.x, y: p.y - 1.2, z: p.z }, 0.3);
+    // Drift toward the footprint so crates land in the level, not off the side.
+    body.setLinvel({ x: (tx - p.x) * 0.25, y: -1.5, z: (tz - p.z) * 0.25 }, true);
+
+    const ball = new THREE.Mesh(
+      new THREE.SphereGeometry(0.3, 16, 12),
+      new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0x12f7ff, emissiveIntensity: 1.4, metalness: 0.2, roughness: 0.3 })
     );
-    mesh.castShadow = true;
-    this.renderer.scene.add(mesh);
-    this.bombs.push({ body, mesh, life: 0 });
+    ball.castShadow = true;
+    const canopy = new THREE.Mesh(
+      new THREE.ConeGeometry(0.62, 0.55, 12, 1, true),
+      new THREE.MeshStandardMaterial({ color: 0xff2bd6, emissive: 0xff2bd6, emissiveIntensity: 0.7, metalness: 0.1, roughness: 0.5, side: THREE.DoubleSide })
+    );
+    this.renderer.scene.add(ball);
+    this.renderer.scene.add(canopy);
+    this.supplies.push({ body, ball, canopy, life: 0, delivered: false });
     this.audio?.bombDrop();
   }
 
-  _detonate(center) {
-    this.audio?.explosion();
-    // Use the CURRENTLY live bodies, not the snapshot from launch: blocks knocked
-    // off earlier may already have been culled from the physics world, and
-    // touching a freed body panics wasm ("unreachable") and poisons the instance.
-    const targets = this.getLiveBodies ? this.getLiveBodies() : this.targets;
-    // One big blast: wide enough to reach the whole footprint, strong enough to
-    // clear a tall tower on its own (there is no second bomb to finish the job).
-    this.physics.explode(center, 8.5, 24, targets);
-    const shell = new THREE.Mesh(
-      new THREE.SphereGeometry(0.5, 18, 14),
-      new THREE.MeshBasicMaterial({ color: 0xffe45e, transparent: true, opacity: 0.95 })
-    );
-    shell.position.copy(center);
-    this.renderer.scene.add(shell);
-    const light = new THREE.PointLight(0xffb347, 12, 22, 2);
-    light.position.copy(center);
-    this.renderer.scene.add(light);
-    this.explosions.push({ mesh: shell, light, life: 0, max: 0.7 });
-    this.onDetonate?.(center);
+  // Hand off one landed crate to the game (which flies +1 up to the ball counter),
+  // then clear its physics body + meshes.
+  _deliver(s) {
+    s.delivered = true;
+    const t = s.body.translation();
+    this.onSupply?.(new THREE.Vector3(t.x, Math.max(t.y, 0.5), t.z));
+    this.physics.remove(s.body);
+    this.renderer.remove(s.ball);
+    this.renderer.remove(s.canopy);
   }
 
   update(dt) {
@@ -488,50 +460,35 @@ export class Airstrike {
       }
       for (const prop of this.props) prop.rotation.z -= dt * 34;
 
-      // Carry the physics collider with the plane.
-      if (this._collider) this.physics.movePlaneCollider(pos, this.plane.quaternion);
-
-      // Release the single critical bomb at the apex of the low pass over the target.
-      if (!this._dropped && u > 0.31) {
-        this._spawnBomb();
-        this._dropped = true;
+      // Air-drop the crate, one crate every ~0.14s, across the low pass.
+      if (u > 0.28 && this._supplyCount < this._maxSupplies) {
+        this._supplyTimer -= dt;
+        if (this._supplyTimer <= 0) {
+          this._spawnSupply();
+          this._supplyCount++;
+          this._supplyTimer = 0.14;
+        }
       }
 
       if (this._u >= 1) {
         this._removePlane();
-        this.physics.removePlaneCollider();
-        this._collider = null;
         this.active = false;
         this.audio?.stopDrone();
       }
     }
 
-    for (let i = this.bombs.length - 1; i >= 0; i--) {
-      const b = this.bombs[i];
-      b.life += dt;
-      const t = b.body.translation();
-      b.mesh.position.set(t.x, t.y, t.z);
-      const r = b.body.rotation();
-      b.mesh.quaternion.set(r.x, r.y, r.z, r.w);
-      if (t.y <= 0.55 || t.y < -3 || b.life > 4) {
-        this._detonate(new THREE.Vector3(t.x, Math.max(t.y, 0.4), t.z));
-        this.physics.remove(b.body);
-        this.renderer.remove(b.mesh);
-        this.bombs.splice(i, 1);
-      }
-    }
-
-    for (let i = this.explosions.length - 1; i >= 0; i--) {
-      const e = this.explosions[i];
-      e.life += dt;
-      const k = e.life / e.max;
-      e.mesh.scale.setScalar(0.5 + k * 9);
-      e.mesh.material.opacity = Math.max(0, 0.95 * (1 - k));
-      e.light.intensity = 12 * (1 - k);
-      if (e.life >= e.max) {
-        this.renderer.remove(e.mesh);
-        this.renderer.scene.remove(e.light);
-        this.explosions.splice(i, 1);
+    // Parachuting crates: descend, then deliver when landed (or after a timeout).
+    for (let i = this.supplies.length - 1; i >= 0; i--) {
+      const s = this.supplies[i];
+      s.life += dt;
+      const t = s.body.translation();
+      s.ball.position.set(t.x, t.y, t.z);
+      s.canopy.position.set(t.x, t.y + 0.78, t.z);
+      const v = s.body.linvel();
+      const settled = t.y < 0.75 && Math.hypot(v.x, v.y, v.z) < 1.3;
+      if (!s.delivered && (settled || s.life > 5)) {
+        this._deliver(s);
+        this.supplies.splice(i, 1);
       }
     }
 

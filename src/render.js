@@ -251,6 +251,14 @@ export class Renderer {
     });
   }
 
+  // Project a world point to screen pixels (for flying HUD tokens to overlays).
+  toScreen(v) {
+    const p = v.clone().project(this.camera);
+    const w = this.canvas.clientWidth || window.innerWidth;
+    const h = this.canvas.clientHeight || window.innerHeight;
+    return { x: (p.x * 0.5 + 0.5) * w, y: (-p.y * 0.5 + 0.5) * h };
+  }
+
   // First intersection point of the CURRENT pointer ray (set by the preceding
   // pointerRay call) with the given meshes, or null. Lets the game aim a lobbed
   // shot at exactly the block that was tapped.

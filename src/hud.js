@@ -124,6 +124,32 @@ export class Hud {
     f.classList.add('go');
   }
 
+  // Fly a "+1" token from a screen point up to the BALLS counter, calling
+  // `onArrive` when it lands (the game bumps the ball count then). Used by the
+  // C-130 resupply: each parachuted crate flies up to top up your ammo.
+  flyToBalls(x, y, onArrive) {
+    const pill = this.el.ballsPill.getBoundingClientRect();
+    const tx = pill.left + pill.width / 2;
+    const ty = pill.top + pill.height / 2;
+    const tok = document.createElement('div');
+    tok.className = 'supply-token';
+    tok.textContent = '＋';
+    tok.style.left = `${x}px`;
+    tok.style.top = `${y}px`;
+    this.el.app.appendChild(tok);
+    requestAnimationFrame(() => {
+      tok.style.transform = `translate(${tx - x}px, ${ty - y}px) scale(0.5)`;
+      tok.style.opacity = '0';
+    });
+    setTimeout(() => {
+      tok.remove();
+      this.el.ballsPill.classList.remove('bump');
+      void this.el.ballsPill.offsetWidth;
+      this.el.ballsPill.classList.add('bump');
+      onArrive?.();
+    }, 650);
+  }
+
   hideWin() {
     this.el.winScreen.classList.add('hidden');
   }

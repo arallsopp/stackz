@@ -126,6 +126,23 @@ export class Physics {
     return body;
   }
 
+  // A supply crate/ball that parachutes down: high linear damping gives it a slow,
+  // floaty descent (drag), light + bouncy so it barely disturbs the stack.
+  addParachute(pos, radius = 0.3) {
+    const desc = RAPIER.RigidBodyDesc.dynamic()
+      .setTranslation(pos.x, pos.y, pos.z)
+      .setLinearDamping(4.5) // parachute drag -> gentle terminal velocity
+      .setAngularDamping(1.5);
+    const body = this.world.createRigidBody(desc);
+    const col = RAPIER.ColliderDesc.ball(radius)
+      .setDensity(0.5)
+      .setFriction(0.6)
+      .setRestitution(0.2)
+      .setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS);
+    this.world.createCollider(col, body);
+    return body;
+  }
+
   // The player's projectile: a heavy, fast sphere.
   addBall(pos, velocity, radius = 0.38) {
     const desc = RAPIER.RigidBodyDesc.dynamic()

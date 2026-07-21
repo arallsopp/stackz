@@ -63,10 +63,9 @@ export class Game {
     this.shield = new Shield(this.renderer, this.physics);
     this.airstrike = new Airstrike(this.renderer, this.physics);
     this.airstrike.audio = this.audio;
-    this.airstrike.onDetonate = () => this._kick(SHAKE_EXPLOSION);
+    // Each parachuted crate flies up to the ball counter and grants +1 ball.
+    this.airstrike.onSupply = (worldPos) => this._deliverSupply(worldPos);
     this.airstrike.onComplete = () => this._checkWin(true);
-    // Always explode against bodies still in the world (never a stale snapshot).
-    this.airstrike.getLiveBodies = () => this.blocks.map((b) => b.body);
     try {
       await this.airstrike.loadModel(MODEL_URL);
     } catch (e) {
@@ -125,6 +124,23 @@ export class Game {
     this._camBase.copy(this.renderer.camera.position);
     this.hud.hideLoading();
     requestAnimationFrame((t) => this._frame(t));
+    this._applyUrlParams();
+  }
+
+  // Quick run-up for testing: ?level=N boots straight into level N (1-based),
+  // ?mode=learning|normal preselects the mode. Bookmarkable per level.
+  _applyUrlParams() {
+    const p = new URLSearchParams(location.search);
+    const mode = p.get('mode');
+    if (mode === 'learning' || mode === 'normal') {
+      this.store.mode = mode;
+      this.hud.setMode(mode);
+    }
+    const n = parseInt(p.get('level'), 10);
+    if (Number.isInteger(n) && n >= 1 && n <= LEVELS.length) {
+      this.hud.enterGame();
+      this.loadLevel(n - 1);
+    }
   }
 
   _start() {
@@ -299,8 +315,19 @@ export class Game {
     const live = this.blocks.filter((b) => !b.cleared).map((b) => b.body);
     if (!this.airstrike.launch(live, this._bounds)) return;
     this.store.spendAirstrike(); // scarce, global resource
-    this.airstrikeUsed = true; // powerful, so it voids this level's score
     this._updateHud();
+  }
+
+  // A parachuted crate landed: fly a +1 up to the ball counter, then grant the ball.
+  _deliverSupply(worldPos) {
+    const s = this.renderer.toScreen(worldPos);
+    this.audio.click();
+    this.hud.flyToBalls(s.x, s.y, () => {
+      this.ballBudget += 1;
+      this._loseAt = null; // fresh ammo — cancel any pending out-of-balls loss
+      this._updateHud();
+      this.audio.fire();
+    });
   }
 
   // ---- main loop ------------------------------------------------------------
