@@ -34,6 +34,7 @@ export class Physics {
     this.shieldBody = null;
     this.shieldSpin = 0;
     this.shieldAngle = 0;
+    this.mountBodies = []; // kinematic frames that ride the turntable
     this._addPlatform(platform, spin);
   }
 
@@ -121,6 +122,42 @@ export class Physics {
       .setCollisionGroups(GROUP_MECH);
     this.world.createCollider(col, body);
     return body;
+  }
+
+  // A box MOUNTED to the turntable: a kinematic body that orbits + spins with the
+  // platform, so a rigid frame (a hinge post/bar) rides the spinning table instead
+  // of standing still while the loose blocks slide out from under it. Spawned at
+  // its real (already-orbited) start transform to avoid a first-step teleport.
+  addMountBox(pos, half, quat) {
+    const a = this.platformAngle || 0;
+    const t = this._orbit(pos, a);
+    const desc = RAPIER.RigidBodyDesc.kinematicPositionBased()
+      .setTranslation(t.x, t.y, t.z)
+      .setRotation(this._spinQuat(a, quat));
+    const body = this.world.createRigidBody(desc);
+    const col = RAPIER.ColliderDesc.cuboid(half.x, half.y, half.z)
+      .setFriction(0.9)
+      .setRestitution(0.1)
+      .setCollisionGroups(GROUP_MECH);
+    this.world.createCollider(col, body);
+    this.mountBodies.push({ body, pos: { x: pos.x, y: pos.y, z: pos.z }, quat: quat || { x: 0, y: 0, z: 0, w: 1 } });
+    return body;
+  }
+
+  _orbit(p, a) {
+    const c = Math.cos(a), s = Math.sin(a);
+    return { x: p.x * c + p.z * s, y: p.y, z: -p.x * s + p.z * c };
+  }
+  _spinQuat(a, q) {
+    return this._qmul({ x: 0, y: Math.sin(a / 2), z: 0, w: Math.cos(a / 2) }, q || { x: 0, y: 0, z: 0, w: 1 });
+  }
+  _qmul(a, b) {
+    return {
+      x: a.w * b.x + a.x * b.w + a.y * b.z - a.z * b.y,
+      y: a.w * b.y - a.x * b.z + a.y * b.w + a.z * b.x,
+      z: a.w * b.z + a.x * b.y - a.y * b.x + a.z * b.w,
+      w: a.w * b.w - a.x * b.x - a.y * b.y - a.z * b.z,
+    };
   }
 
   // Hinge `armBody` to `anchorBody` with a revolute (single-axis) joint at
@@ -255,6 +292,11 @@ export class Physics {
       this.platformAngle += this.spin / 60;
       const a = this.platformAngle * 0.5;
       this.platformBody.setNextKinematicRotation({ x: 0, y: Math.sin(a), z: 0, w: Math.cos(a) });
+    }
+    // Carry any mounted frames around with the turntable (orbit + spin in sync).
+    for (const m of this.mountBodies) {
+      m.body.setNextKinematicTranslation(this._orbit(m.pos, this.platformAngle));
+      m.body.setNextKinematicRotation(this._spinQuat(this.platformAngle, m.quat));
     }
     if (this.shieldBody) {
       this.shieldAngle += this.shieldSpin / 60;

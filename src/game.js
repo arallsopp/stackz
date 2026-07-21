@@ -261,7 +261,9 @@ export class Game {
       // A hinged arm must not collide with its own post (GROUP_MECH), or the
       // overlap at the hinge jams the joint.
       if (spec.hinge) opts.group = GROUP_MECH;
-      const body = spec.fixed ? this.physics.addFixedBox(pos, half, quat) : this.physics.addBox(pos, half, quat, opts);
+      // `fixed` frames MOUNT to the turntable (kinematic, ride the spin); on a
+      // still table they simply stay put.
+      const body = spec.fixed ? this.physics.addMountBox(pos, half, quat) : this.physics.addBox(pos, half, quat, opts);
       const mesh = this.renderer.makeBox(spec.size, spec.color, mech);
       this.blocks.push({ mesh, body, cleared: false, mechanism: mech });
       if (spec.fixed) this._lastFixed = body;

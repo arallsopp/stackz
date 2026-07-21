@@ -194,29 +194,31 @@ function ramp({ cx = 0, cz = 0, rise = 2.0, run = 3.2, width = 2.2, thick = 0.4,
 // the frame, reaching the bottom at full speed to kick blocks off the +x edge.
 // Returns the frame + boot + pin; author the target blocks separately.
 // `barY` = hinge / top-bar height, `arm` = boot length, `postX` = post spread.
-// The boot swings about the X axis (in the Y-Z plane) so it kicks blocks along Z,
-// off an edge with a CLEAR path (unlike +x, where a frame post would block them).
-// The boot is a wide paddle pointing +z (toward the camera), propped horizontal by
-// a coloured PIN in FRONT (so the player can actually hit it). Shoot the pin and
-// the boot swings down through the bottom and sweeps the blocks off the rear edge.
-function swingKicker({ barY = 3.0, arm = 2.5, postX = 1.6, bootW = 1.7, pinColor = NEON.yellow } = {}) {
+// Side-on Π swing-frame so the whole swing arc + pin face the camera. The two
+// posts sit front/back (in Z) joined by a top bar; the boot hinges at the top-bar
+// centre (axis Z) and swings in the X-Y plane. It's authored HORIZONTAL pointing
+// -x, propped by a coloured PIN in the swing plane (hittable). Shoot the pin and
+// the boot swings down through the bottom and kicks the blocks off the +x edge
+// (clear — no post lives in X). `fixed` frame parts ride the turntable.
+function swingKicker({ barY = 3.0, arm = 2.5, postZ = 1.0, bootW = 0.9, pinColor = NEON.yellow } = {}) {
   const pinTop = barY - 0.2; // just under the boot's far end
   return [
-    // Π frame (grey mechanism, fixed): posts in X, top bar along X.
-    { shape: 'box', fixed: true, mechanism: true, pos: [-postX, barY / 2, 0], size: [0.3, barY, 0.4] },
-    { shape: 'box', fixed: true, mechanism: true, pos: [postX, barY / 2, 0], size: [0.3, barY, 0.4] },
-    { shape: 'box', fixed: true, mechanism: true, pos: [0, barY + 0.15, 0], size: [postX * 2 + 0.3, 0.3, 0.4] },
-    // Boot paddle: hinged at the top-bar centre (axis X), horizontal, pointing +z.
+    // Π frame (grey mechanism, fixed): posts front/back in Z, top bar spanning Z.
+    { shape: 'box', fixed: true, mechanism: true, pos: [0, barY / 2, -postZ], size: [0.4, barY, 0.3] },
+    { shape: 'box', fixed: true, mechanism: true, pos: [0, barY / 2, postZ], size: [0.4, barY, 0.3] },
+    { shape: 'box', fixed: true, mechanism: true, pos: [0, barY + 0.15, 0], size: [0.4, 0.3, postZ * 2 + 0.3] },
+    // Boot: hinged at the top-bar centre (axis Z), horizontal, pointing -x.
     {
       shape: 'box',
       mechanism: true,
-      pos: [0, barY, arm / 2],
-      size: [bootW, 0.3, arm],
+      pos: [-arm / 2, barY, 0],
+      size: [arm, 0.3, bootW],
+      rot: [0, 0, Math.PI],
       density: 8, // heavy boot -> a solid kick
-      hinge: { anchor: [0, barY, 0], axis: [1, 0, 0] },
+      hinge: { anchor: [0, barY, 0], axis: [0, 0, 1] },
     },
-    // Pin: a coloured (playable) bar in front, propping the boot's far end up.
-    { shape: 'box', pos: [0, pinTop / 2, arm], size: [bootW * 0.7, pinTop, 0.35], color: pinColor },
+    // Pin: a coloured (playable) bar in the swing plane, propping the boot's far end.
+    { shape: 'box', pos: [-arm, pinTop / 2, 0], size: [0.35, pinTop, bootW * 0.85], color: pinColor },
   ];
 }
 
@@ -231,12 +233,12 @@ function buildLevels() {
     name: 'KICKER',
     par: 3,
     airstrikes: 1,
-    spin: 0,
+    spin: 0.12, // rides the turntable (frame + boot + pin + targets spin together)
     blocks: [
-      ...swingKicker({ barY: 3.0, arm: 2.5, postX: 1.6, bootW: 1.7, pinColor: NEON.yellow }),
-      // Targets at the bottom of the swing, kicked off the rear edge.
-      { shape: 'box', pos: [-0.45, 0.5, -0.5], size: [0.85, 1.0, 0.85], color: NEON.magenta, density: 0.4 },
-      { shape: 'box', pos: [0.45, 0.5, -0.5], size: [0.85, 1.0, 0.85], color: NEON.cyan, density: 0.4 },
+      ...swingKicker({ barY: 3.0, arm: 2.5, postZ: 1.0, bootW: 0.9, pinColor: NEON.yellow }),
+      // Targets at the bottom of the swing, kicked off the +x edge (clear path).
+      { shape: 'box', pos: [0.5, 0.5, 0], size: [0.85, 1.0, 0.85], color: NEON.magenta, density: 0.4 },
+      { shape: 'box', pos: [1.4, 0.5, 0], size: [0.85, 1.0, 0.85], color: NEON.cyan, density: 0.4 },
     ],
   });
 
