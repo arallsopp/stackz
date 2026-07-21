@@ -50,6 +50,13 @@ the test/debug handle (`__game.loadLevel(n)`, `__game.store`, `__game._frames`).
 horizontal speed fixed at `BALL_SPEED`, a vertical term cancels `GRAVITY` — so
 far/high stacks are reachable, not dropping short.
 
+**Airstrike = resupply** (`airstrike.js`): the C-130 air-drops 5 crates that
+parachute in (`physics.addParachute`, high linear damping) and then fly up to the
+BALLS counter (`hud.flyToBalls`) as +1 each. No explosion, no score void.
+
+**Quick run-up**: `?level=N` (1-based) boots straight into a level, `?mode=…`
+preselects the mode (`game._applyUrlParams`) — bookmarkable per level for testing.
+
 **Modes** (`store.mode`, toggled on the start screen, persisted):
 - `normal` — authored par, SKIP hidden.
 - `learning` — SKIP shown; par auto-tunes via `store.learnedPar/recordParSample`
@@ -105,6 +112,20 @@ edge**):
 
 **Block budget ~28/level** (`MAX_BLOCKS`, dev-warns): Rapier/mobile Safari and the
 tight ball budget both punish big piles.
+
+**Mechanism blocks & mechanisms.** A block spec may be `mechanism: true` (grey
+hardware, excluded from the win check — you don't clear it), `fixed: true` (an
+immovable anchor / hinge post), and/or `hinge: { anchor, axis }` (a revolute joint
+to the most-recent fixed post — a swinging "boot"). Gotcha: a jointed post+arm
+overlap at the hinge and jam solid unless the pair skips colliding with EACH OTHER
+— hinged arms + `addFixedBox` go in `GROUP_MECH` (collide with everything except
+other mechanism). `pivot()` builds a post+arm kicker.
+
+**Sloping base** (`level.tilt`, radians): the whole table + stack is rigidly
+rotated about the origin (so a flat-authored, in-contact level becomes a precarious
+slope — knocked blocks slide off the low edge). Tilt levels force `spin: 0` (a
+sloped turntable just wobbles). Don't put a free cylinder on a slope — it rolls off
+unprompted.
 
 **Par is set by human playtest, not guessed.** Headless drives verify *stability*
 (loads solid, never self-solves, no WASM panic) reliably; they can't judge
