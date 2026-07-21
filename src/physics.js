@@ -14,19 +14,27 @@ export class Physics {
   }
 
   // `platform` = { hx, hy, hz }, sized per level to the tower's base footprint.
-  reset(platform) {
+  // `spin` (rad/s) makes the table a slowly-rotating kinematic turntable that
+  // carries the whole structure around via friction.
+  reset(platform, spin = 0) {
     // Rapier worlds are cheap to recreate; do that on every level load.
     this.world = new RAPIER.World({ x: 0, y: -20.0, z: 0 });
     // A stiffer solver keeps tall stacks rock-solid at load.
     this.world.numSolverIterations = 12;
     this.eventQueue = new RAPIER.EventQueue(true);
-    this._addPlatform(platform);
+    this.spin = spin;
+    this.platformAngle = 0;
+    this._addPlatform(platform, spin);
   }
 
-  _addPlatform({ hx, hy, hz }) {
-    const bodyDesc = RAPIER.RigidBodyDesc.fixed().setTranslation(0, -hy, 0);
-    const body = this.world.createRigidBody(bodyDesc);
-    const colDesc = RAPIER.ColliderDesc.cuboid(hx, hy, hz).setFriction(0.9).setRestitution(0.0);
+  _addPlatform({ hx, hy, hz }, spin) {
+    // Spinning tables are kinematic (position-based) so contacts impart the
+    // turntable's surface velocity to the blocks resting on it.
+    const desc = (spin ? RAPIER.RigidBodyDesc.kinematicPositionBased() : RAPIER.RigidBodyDesc.fixed())
+      .setTranslation(0, -hy, 0);
+    const body = this.world.createRigidBody(desc);
+    // Extra friction so the structure grips the turntable instead of sliding.
+    const colDesc = RAPIER.ColliderDesc.cuboid(hx, hy, hz).setFriction(0.95).setRestitution(0.0);
     this.world.createCollider(colDesc, body);
     this.platformBody = body;
   }
@@ -108,6 +116,13 @@ export class Physics {
   }
 
   step() {
+    // Advance the turntable one fixed tick before solving, so Rapier derives the
+    // contact velocity that drags the resting structure around.
+    if (this.spin) {
+      this.platformAngle += this.spin / 60;
+      const a = this.platformAngle * 0.5;
+      this.platformBody.setNextKinematicRotation({ x: 0, y: Math.sin(a), z: 0, w: Math.cos(a) });
+    }
     this.world.step(this.eventQueue);
     // Turn newly-started contacts into impact events for audio. Strength is the
     // approach speed of the faster of the two bodies at the moment of contact.

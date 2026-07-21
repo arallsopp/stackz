@@ -86,6 +86,7 @@ function buildLevels() {
     name: 'TWIN SPIRES',
     par: 3,
     airstrikes: 1,
+    spin: 0.25, // slow turntable
     blocks: [
       ...column(6, { cx: -1.0, bw: 0.95, bh: 0.8, bd: 0.95 }),
       ...column(6, { cx: 1.0, bw: 0.95, bh: 0.8, bd: 0.95 }),
@@ -107,6 +108,7 @@ function buildLevels() {
     name: 'DRUM TOWER',
     par: 4,
     airstrikes: 1,
+    spin: 0.3,
     blocks: [
       { shape: 'box', pos: [0, 0.25, 0], size: [2.2, 0.5, 2.2], color: NEON.violet },
       { shape: 'cyl', pos: [0, 0.5 + GAP + 0.7, 0], radius: 0.85, height: 1.4, axis: 'y', color: NEON.cyan },
@@ -133,6 +135,7 @@ function buildLevels() {
     name: 'THE CITADEL',
     par: 6,
     airstrikes: 2,
+    spin: 0.18,
     blocks: [
       ...column(5, { cx: -1.2, cz: -1.2, bw: 0.9, bh: 0.8, bd: 0.9 }),
       ...column(5, { cx: 1.2, cz: -1.2, bw: 0.9, bh: 0.8, bd: 0.9 }),

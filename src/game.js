@@ -129,7 +129,7 @@ export class Game {
     // Size the table to the tower's base and frame the camera to fit it all.
     const { platform, maxY } = this._computeBounds(level);
     this._bounds = { maxY, hx: Math.max(platform.hx, platform.hz) };
-    this.physics.reset(platform);
+    this.physics.reset(platform, level.spin || 0);
     this.renderer.setPlatform(platform);
 
     this.levelIndex = index;
@@ -260,6 +260,8 @@ export class Game {
         steps++;
       }
       this._sync(dt);
+      // Keep the table mesh aligned with the (possibly spinning) physics platform.
+      if (this.renderer.platform) this.renderer.platform.rotation.y = this.physics.platformAngle;
       this.airstrike.update(dt);
       this._checkWin(false);
     }

@@ -50,8 +50,9 @@ blocks remain. Six levels ship, favouring tall, toppling structures (Jenga inclu
 
 ## Tuning knobs
 
-- **Levels:** edit `src/levels.js` — `par`, `airstrikes`, and the block list
-  (`box`/`cyl` specs). Helpers `wall()` and `pyramid()` build common shapes.
+- **Levels:** edit `src/levels.js` — `par`, `airstrikes`, `spin` (rad/s; makes the
+  table a slowly-rotating turntable that carries the structure), and the block list
+  (`box`/`cyl` specs). Helpers build columns/jenga/spires.
 - **Ball power:** `speed` in `game.js#_fire`.
 - **Airstrike power/radius:** `physics.explode(...)` call in `airstrike.js#_detonate`.
 - **Platform size:** `PLATFORM` in `src/levels.js`.
