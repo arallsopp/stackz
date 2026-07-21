@@ -1,7 +1,8 @@
 import { THREE } from './render.js';
 
-// The comedic payoff: a C-130 Hercules flies over the platform and carpet-bombs
-// everything. Built entirely from primitives so it needs no external assets.
+// The comedic payoff: a cartoon C-130 Hercules flies over and carpet-bombs the
+// stack. The plane is drawn as a camouflaged cartoon sprite (angry eyes, red
+// trim, spinning props) on a billboard — matching the classic cartoon look.
 export class Airstrike {
   constructor(renderer, physics) {
     this.renderer = renderer;
@@ -11,16 +12,16 @@ export class Airstrike {
     this.bombs = [];
     this.explosions = [];
     this.props = [];
-    this.onDetonate = null; // (center) => void, for screen shake / flash
+    this.onDetonate = null;
     this.onComplete = null;
+    this._planeTex = null;
+    this._propTex = null;
   }
 
   get busy() {
     return this.active || this.bombs.length > 0 || this.explosions.length > 0;
   }
 
-  // Tear everything down. MUST be called before the physics world is recreated,
-  // otherwise in-flight bombs/targets reference bodies from a destroyed world.
   reset() {
     if (this.plane) this.renderer.remove(this.plane);
     this.plane = null;
@@ -40,112 +41,269 @@ export class Airstrike {
     this._wasBusy = false;
   }
 
-  _buildPlane() {
-    const g = new THREE.Group();
-    const body = new THREE.MeshStandardMaterial({
-      color: 0x3a4a5a,
-      metalness: 0.7,
-      roughness: 0.35,
-      emissive: 0x0a1a2a,
-      emissiveIntensity: 0.4,
-    });
-    const accent = new THREE.MeshStandardMaterial({
-      color: 0x12f7ff,
-      emissive: 0x12f7ff,
-      emissiveIntensity: 0.8,
-      metalness: 0.4,
-      roughness: 0.3,
-    });
+  // ---- cartoon plane sprite -------------------------------------------------
 
-    // Fuselage (cylinder laid along X).
-    const fuse = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.55, 5.2, 20), body);
-    fuse.rotation.z = Math.PI / 2;
-    g.add(fuse);
-    // Nose cone.
-    const nose = new THREE.Mesh(new THREE.ConeGeometry(0.55, 1.2, 20), body);
-    nose.rotation.z = -Math.PI / 2;
-    nose.position.x = 3.1;
-    g.add(nose);
-    // Tail cone.
-    const tailCone = new THREE.Mesh(new THREE.ConeGeometry(0.5, 1.4, 20), body);
-    tailCone.rotation.z = Math.PI / 2;
-    tailCone.position.x = -3.1;
-    g.add(tailCone);
+  _planeTexture() {
+    if (this._planeTex) return this._planeTex;
+    const W = 1024;
+    const H = 512;
+    const c = document.createElement('canvas');
+    c.width = W;
+    c.height = H;
+    const g = c.getContext('2d');
 
-    // High wing.
-    const wing = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.16, 8.4), body);
-    wing.position.y = 0.5;
-    g.add(wing);
-    // Tail plane + vertical fin.
-    const stab = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.14, 3.4), body);
-    stab.position.set(-2.7, 0.2, 0);
-    g.add(stab);
-    const fin = new THREE.Mesh(new THREE.BoxGeometry(1.1, 1.6, 0.16), accent);
-    fin.position.set(-2.8, 0.9, 0);
-    g.add(fin);
+    const camoBase = '#5c6e33';
+    const camoDark = '#36461d';
+    const camoBrown = '#5a4126';
+    const outline = '#161810';
 
-    // Four turboprop engines with spinning props.
-    for (const z of [-2.7, -1.2, 1.2, 2.7]) {
-      const nacelle = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.24, 1.1, 12), body);
-      nacelle.rotation.z = Math.PI / 2;
-      nacelle.position.set(0.35, 0.42, z);
-      g.add(nacelle);
+    g.lineJoin = 'round';
+    g.lineCap = 'round';
 
-      const hub = new THREE.Mesh(new THREE.ConeGeometry(0.18, 0.4, 10), accent);
-      hub.rotation.z = -Math.PI / 2;
-      hub.position.set(1.0, 0.42, z);
-      g.add(hub);
+    // --- high wing (drawn behind fuselage), swept back toward the tail (left) ---
+    g.save();
+    g.beginPath();
+    g.moveTo(250, 208);
+    g.lineTo(792, 190);
+    g.lineTo(812, 224);
+    g.lineTo(276, 244);
+    g.closePath();
+    g.fillStyle = camoDark;
+    g.fill();
+    g.lineWidth = 8;
+    g.strokeStyle = outline;
+    g.stroke();
+    g.restore();
 
-      const prop = new THREE.Group();
-      prop.position.set(0.95, 0.42, z);
-      for (let i = 0; i < 3; i++) {
-        const blade = new THREE.Mesh(new THREE.BoxGeometry(0.05, 1.4, 0.14), accent);
-        blade.rotation.x = (i * Math.PI * 2) / 3;
-        prop.add(blade);
-      }
-      g.add(prop);
-      this.props.push(prop);
+    // --- engine nacelles hanging under the wing, props facing forward (right) ---
+    this._engineFronts = [];
+    const nacY = 250;
+    for (const ex of [360, 476, 592, 708]) {
+      g.save();
+      roundRect(g, ex - 40, nacY - 18, 84, 36, 16);
+      g.fillStyle = camoBase;
+      g.fill();
+      g.lineWidth = 7;
+      g.strokeStyle = outline;
+      g.stroke();
+      // spinner hub
+      g.beginPath();
+      g.ellipse(ex + 46, nacY, 10, 15, 0, 0, Math.PI * 2);
+      g.fillStyle = '#20240f';
+      g.fill();
+      g.restore();
+      this._engineFronts.push({ u: (ex + 52) / W, v: nacY / H });
     }
 
-    // Nav lights.
-    const red = new THREE.Mesh(
-      new THREE.SphereGeometry(0.12, 8, 8),
-      new THREE.MeshBasicMaterial({ color: 0xff2b4d })
-    );
-    red.position.set(0.5, 0.55, 4.2);
-    g.add(red);
-    const green = new THREE.Mesh(
-      new THREE.SphereGeometry(0.12, 8, 8),
-      new THREE.MeshBasicMaterial({ color: 0x4bffa5 })
-    );
-    green.position.set(0.5, 0.55, -4.2);
-    g.add(green);
+    // --- fuselage body ---
+    const cx = 540;
+    const cy = 300;
+    g.save();
+    // body silhouette: long ellipse + upswept tail wedge
+    g.beginPath();
+    g.ellipse(cx, cy, 420, 92, 0, 0, Math.PI * 2);
+    // tail boom kicking up to the left
+    g.moveTo(180, cy - 40);
+    g.lineTo(150, cy - 96);
+    g.lineTo(96, cy - 92);
+    g.lineTo(150, cy + 30);
+    g.closePath();
+    g.fillStyle = camoBase;
+    g.fill();
 
-    g.scale.setScalar(0.85);
-    return g;
+    // camo patches (clipped to the body ellipse)
+    g.save();
+    g.beginPath();
+    g.ellipse(cx, cy, 420, 92, 0, 0, Math.PI * 2);
+    g.clip();
+    const blobs = [
+      [360, 270, 70, 40, camoDark],
+      [520, 320, 90, 46, camoBrown],
+      [660, 268, 80, 42, camoDark],
+      [780, 315, 70, 40, camoBrown],
+      [430, 340, 60, 34, camoDark],
+      [880, 292, 55, 44, camoDark],
+      [250, 300, 60, 40, camoBrown],
+    ];
+    for (const [bx, by, rx, ry, col] of blobs) {
+      g.beginPath();
+      g.ellipse(bx, by, rx, ry, 0, 0, Math.PI * 2);
+      g.fillStyle = col;
+      g.fill();
+    }
+    // belly shading
+    g.beginPath();
+    g.ellipse(cx, cy + 78, 420, 70, 0, 0, Math.PI * 2);
+    g.fillStyle = 'rgba(0,0,0,0.28)';
+    g.fill();
+    g.restore();
+
+    // body outline
+    g.beginPath();
+    g.ellipse(cx, cy, 420, 92, 0, 0, Math.PI * 2);
+    g.lineWidth = 9;
+    g.strokeStyle = outline;
+    g.stroke();
+    g.restore();
+
+    // --- red cheat line along the upper fuselage ---
+    g.beginPath();
+    g.moveTo(240, cy - 6);
+    g.lineTo(900, cy - 20);
+    g.lineWidth = 9;
+    g.strokeStyle = '#e23b4e';
+    g.stroke();
+
+    // --- black radome nose (right) ---
+    g.beginPath();
+    g.ellipse(930, cy + 6, 42, 52, 0, 0, Math.PI * 2);
+    g.fillStyle = '#181a10';
+    g.fill();
+
+    // --- vertical tail fin (left) with Indonesian flag ---
+    g.save();
+    g.beginPath();
+    g.moveTo(150, cy - 70);
+    g.lineTo(112, cy - 168);
+    g.lineTo(70, cy - 150);
+    g.lineTo(120, cy - 40);
+    g.closePath();
+    g.fillStyle = camoBase;
+    g.fill();
+    g.lineWidth = 8;
+    g.strokeStyle = outline;
+    g.stroke();
+    // flag: red over white
+    g.fillStyle = '#e23b4e';
+    g.fillRect(96, cy - 150, 40, 15);
+    g.fillStyle = '#f4f4f0';
+    g.fillRect(96, cy - 135, 40, 15);
+    g.restore();
+    // horizontal stabiliser
+    g.beginPath();
+    roundRect(g, 96, cy - 66, 96, 20, 8);
+    g.fillStyle = camoDark;
+    g.fill();
+    g.lineWidth = 6;
+    g.strokeStyle = outline;
+    g.stroke();
+
+    // --- angry cartoon eyes near the nose (right) ---
+    for (const [ex, ey] of [[812, 268], [872, 280]]) {
+      g.beginPath();
+      g.ellipse(ex, ey, 30, 34, 0, 0, Math.PI * 2);
+      g.fillStyle = '#f6f6f0';
+      g.fill();
+      g.lineWidth = 5;
+      g.strokeStyle = outline;
+      g.stroke();
+      // pupil looking forward-down
+      g.beginPath();
+      g.arc(ex + 12, ey + 12, 12, 0, Math.PI * 2);
+      g.fillStyle = '#121208';
+      g.fill();
+    }
+    // angry eyebrows (thick, slanting down toward the nose)
+    g.lineWidth = 13;
+    g.strokeStyle = outline;
+    g.beginPath();
+    g.moveTo(786, 232);
+    g.lineTo(842, 252);
+    g.stroke();
+    g.beginPath();
+    g.moveTo(852, 246);
+    g.lineTo(906, 268);
+    g.stroke();
+
+    const tex = new THREE.CanvasTexture(c);
+    tex.anisotropy = 4;
+    this._planeTex = tex;
+    return tex;
   }
 
-  // Launch a run over the target `bodies` (array of live rigid bodies).
-  launch(bodies) {
+  _propTexture() {
+    if (this._propTex) return this._propTex;
+    const S = 128;
+    const c = document.createElement('canvas');
+    c.width = S;
+    c.height = S;
+    const g = c.getContext('2d');
+    g.translate(S / 2, S / 2);
+    // faint motion-blur disc
+    g.beginPath();
+    g.arc(0, 0, 58, 0, Math.PI * 2);
+    g.fillStyle = 'rgba(180,190,200,0.12)';
+    g.fill();
+    // three blades
+    g.fillStyle = 'rgba(25,28,15,0.85)';
+    for (let i = 0; i < 3; i++) {
+      g.save();
+      g.rotate((i * Math.PI * 2) / 3);
+      g.beginPath();
+      g.ellipse(0, -34, 7, 30, 0, 0, Math.PI * 2);
+      g.fill();
+      g.restore();
+    }
+    // hub
+    g.beginPath();
+    g.arc(0, 0, 9, 0, Math.PI * 2);
+    g.fillStyle = '#2a2e14';
+    g.fill();
+    const tex = new THREE.CanvasTexture(c);
+    this._propTex = tex;
+    return tex;
+  }
+
+  _buildPlane(Wp) {
+    const Hp = Wp / 2;
+    const group = new THREE.Group();
+
+    const tex = this._planeTexture();
+    const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false });
+    const body = new THREE.Mesh(new THREE.PlaneGeometry(Wp, Hp), mat);
+    group.add(body);
+
+    // Spinning props positioned over the engine fronts recorded during drawing.
+    this.props = [];
+    const propSize = Wp * 0.17;
+    const propMat = new THREE.MeshBasicMaterial({
+      map: this._propTexture(),
+      transparent: true,
+      depthWrite: false,
+    });
+    for (const e of this._engineFronts) {
+      const prop = new THREE.Mesh(new THREE.PlaneGeometry(propSize, propSize), propMat);
+      prop.position.set((e.u - 0.5) * Wp, (0.5 - e.v) * Hp, 0.05);
+      group.add(prop);
+      this.props.push(prop);
+    }
+    return group;
+  }
+
+  // Launch a run over `bodies`. `bounds` = { maxY, hx } from the current level.
+  launch(bodies, bounds = { maxY: 4, hx: 2 }) {
     if (this.active) return false;
     this.targets = bodies;
-    this.props = [];
-    this.plane = this._buildPlane();
-    // Fly left -> right, high over the stack, angled slightly toward camera.
-    this.plane.position.set(-22, 10.5, 1.5);
-    this.plane.rotation.y = 0;
+    const Wp = 3.8;
+    this.plane = this._buildPlane(Wp);
+    // Fly just above the crown, but keep it inside the top of the viewport.
+    const top = this.renderer.viewTopY ?? bounds.maxY + 2;
+    this._flyY = Math.min(bounds.maxY + 1.2, top - Wp / 4 - 0.2);
+    this._dropHalf = bounds.hx + 0.8;
+    this.plane.position.set(-9, this._flyY, 0.6);
     this.renderer.scene.add(this.plane);
     this.active = true;
-    this._dropTimer = 0;
+    this._dropTimer = 0.25;
     this._dropCount = 0;
-    this._maxDrops = 7;
-    this.speed = 12; // units/sec
+    this._maxDrops = 8;
+    this.speed = 6.5;
+    this._t = 0;
     return true;
   }
 
   _spawnBomb() {
     const p = this.plane.position;
-    const body = this.physics.addBall({ x: p.x, y: p.y - 0.4, z: p.z }, { x: 3, y: -2, z: 0 }, 0.22);
+    const body = this.physics.addBall({ x: p.x, y: p.y - 0.6, z: 0 }, { x: 2.5, y: -2, z: 0 }, 0.22);
     const mesh = new THREE.Mesh(
       new THREE.CapsuleGeometry(0.16, 0.5, 6, 10),
       new THREE.MeshStandardMaterial({
@@ -162,47 +320,41 @@ export class Airstrike {
   }
 
   _detonate(center) {
-    // Physics kick — strong and wide so debris is thrown clear of the platform.
     this.physics.explode(center, 5.2, 16, this.targets);
-    // Visual: expanding shell + flash.
     const shell = new THREE.Mesh(
       new THREE.SphereGeometry(0.4, 16, 12),
       new THREE.MeshBasicMaterial({ color: 0xffe45e, transparent: true, opacity: 0.9 })
     );
     shell.position.copy(center);
     this.renderer.scene.add(shell);
-
     const light = new THREE.PointLight(0xffb347, 6, 14, 2);
     light.position.copy(center);
     this.renderer.scene.add(light);
-
     this.explosions.push({ mesh: shell, light, life: 0, max: 0.55 });
     this.onDetonate?.(center);
   }
 
   update(dt) {
-    // Move the plane and drop its payload.
     if (this.active && this.plane) {
+      this._t += dt;
       this.plane.position.x += this.speed * dt;
-      for (const prop of this.props) prop.rotation.x += dt * 40;
+      this.plane.position.y = this._flyY + Math.sin(this._t * 3) * 0.15;
+      for (const prop of this.props) prop.rotation.z -= dt * 34;
 
-      // Carpet-bomb while passing over the platform region.
-      const overTarget = this.plane.position.x > -5 && this.plane.position.x < 5;
+      const overTarget = Math.abs(this.plane.position.x) < this._dropHalf;
       this._dropTimer -= dt;
       if (overTarget && this._dropTimer <= 0 && this._dropCount < this._maxDrops) {
         this._spawnBomb();
         this._dropCount++;
-        this._dropTimer = 0.14;
+        this._dropTimer = 0.13;
       }
-
-      if (this.plane.position.x > 24) {
+      if (this.plane.position.x > 10) {
         this.renderer.remove(this.plane);
         this.plane = null;
         this.active = false;
       }
     }
 
-    // Advance bombs; detonate near the deck or on long timeout.
     for (let i = this.bombs.length - 1; i >= 0; i--) {
       const b = this.bombs[i];
       b.life += dt;
@@ -218,13 +370,11 @@ export class Airstrike {
       }
     }
 
-    // Fade explosion shells.
     for (let i = this.explosions.length - 1; i >= 0; i--) {
       const e = this.explosions[i];
       e.life += dt;
       const k = e.life / e.max;
-      const s = 0.4 + k * 5.5;
-      e.mesh.scale.setScalar(s);
+      e.mesh.scale.setScalar(0.4 + k * 5.5);
       e.mesh.material.opacity = Math.max(0, 0.9 * (1 - k));
       e.light.intensity = 6 * (1 - k);
       if (e.life >= e.max) {
@@ -234,11 +384,21 @@ export class Airstrike {
       }
     }
 
-    // Signal completion once everything has settled.
     if (this._wasBusy && !this.busy) {
       this._wasBusy = false;
       this.onComplete?.();
     }
     if (this.busy) this._wasBusy = true;
   }
+}
+
+// Canvas rounded-rectangle path helper.
+function roundRect(g, x, y, w, h, r) {
+  g.beginPath();
+  g.moveTo(x + r, y);
+  g.arcTo(x + w, y, x + w, y + h, r);
+  g.arcTo(x + w, y + h, x, y + h, r);
+  g.arcTo(x, y + h, x, y, r);
+  g.arcTo(x, y, x + w, y, r);
+  g.closePath();
 }

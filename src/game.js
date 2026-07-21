@@ -92,6 +92,7 @@ export class Game {
     const level = LEVELS[index];
     // Size the table to the tower's base and frame the camera to fit it all.
     const { platform, maxY } = this._computeBounds(level);
+    this._bounds = { maxY, hx: Math.max(platform.hx, platform.hz) };
     this.physics.reset(platform);
     this.renderer.setPlatform(platform);
 
@@ -196,7 +197,7 @@ export class Game {
   _callAirstrike() {
     if (this.state !== 'playing' || this.airstrikesLeft <= 0 || this.airstrike.active) return;
     const live = this.blocks.filter((b) => !b.cleared).map((b) => b.body);
-    if (!this.airstrike.launch(live)) return;
+    if (!this.airstrike.launch(live, this._bounds)) return;
     this.airstrikesLeft--;
     this.shots += 2; // powerful, so it carries a scoring cost
     this._updateHud();

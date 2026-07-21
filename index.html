@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#05010f" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <title>STACKZ — Neon Demolition</title>
+  </head>
+  <body>
+    <div id="app">
+      <canvas id="scene"></canvas>
+
+      <!-- HUD -->
+      <header id="hud" class="hud hidden">
+        <div class="hud-left">
+          <div class="hud-pill">
+            <span class="hud-label">LEVEL</span>
+            <span id="hud-level" class="hud-value">1</span>
+          </div>
+          <div class="hud-pill">
+            <span class="hud-label">SHOTS</span>
+            <span id="hud-shots" class="hud-value">0</span>
+          </div>
+        </div>
+        <div class="hud-right">
+          <div class="hud-pill hud-target">
+            <span class="hud-label">PAR</span>
+            <span id="hud-par" class="hud-value">3</span>
+          </div>
+        </div>
+      </header>
+
+      <!-- Airstrike button -->
+      <button id="airstrike-btn" class="airstrike hidden" aria-label="Call airstrike">
+        <span class="airstrike-icon">✈</span>
+        <span class="airstrike-text">AIRSTRIKE</span>
+        <span id="airstrike-count" class="airstrike-count">1</span>
+      </button>
+
+      <!-- Start screen -->
+      <div id="start-screen" class="overlay">
+        <div class="overlay-card">
+          <h1 class="logo">STACK<span class="logo-z">Z</span></h1>
+          <p class="tagline">Tap to launch. Obliterate the stack.<br />Clear the platform in as few shots as you can.</p>
+          <button id="start-btn" class="btn btn-primary">TAP TO START</button>
+          <p class="hint">Tap anywhere to fire a ball toward that point.<br />Out of ideas? Call an <b>AIRSTRIKE</b>.</p>
+        </div>
+      </div>
+
+      <!-- Level complete -->
+      <div id="win-screen" class="overlay hidden">
+        <div class="overlay-card">
+          <h2 class="win-title">PLATFORM CLEARED</h2>
+          <div id="stars" class="stars">
+            <span class="star">★</span><span class="star">★</span><span class="star">★</span>
+          </div>
+          <p class="win-stats">
+            Cleared in <span id="win-shots" class="accent">0</span> shots
+            <span class="par-note">(par <span id="win-par">3</span>)</span>
+          </p>
+          <div class="overlay-actions">
+            <button id="replay-btn" class="btn btn-ghost">REPLAY</button>
+            <button id="next-btn" class="btn btn-primary">NEXT LEVEL</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Loading -->
+      <div id="loading" class="overlay">
+        <div class="loader">
+          <div class="loader-bar"></div>
+          <p>LOADING PHYSICS…</p>
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

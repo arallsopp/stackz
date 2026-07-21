@@ -26,11 +26,15 @@ Open the preview URL on your phone and **Add to Home Screen** to install it full
 ## How it plays
 
 - **Tap** anywhere to fire a heavy ball toward that point.
-- **AIRSTRIKE** button calls a bomber run (limited uses per level, +2 to your shot
-  score — powerful but costly).
-- **Goal:** knock every block off the platform. Fewer shots = more stars (★★★ at par).
-- **Physics is real:** stacks topple, and cylinders roll on their sides and tumble
-  off the edge when they gain momentum.
+- **AIRSTRIKE** button calls a cartoon C-130 Hercules bomber run (limited uses per
+  level, +2 to your shot score — powerful but costly).
+- **Goal:** knock every block off the table. Fewer shots = more stars (★★★ at par).
+- **Physics is real:** tall towers topple, and cylinders roll on their sides and
+  tumble off the edge when they gain momentum.
+
+The **table** is sized per level to the tower's base (never bigger) and the camera
+auto-frames the whole table + tower in portrait, so you can always see how many
+blocks remain. Six levels ship, favouring tall, toppling structures (Jenga included).
 
 ## Project layout
 

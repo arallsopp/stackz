@@ -85,11 +85,11 @@ export class Renderer {
     const g = new THREE.Group();
 
     const topMat = new THREE.MeshStandardMaterial({
-      color: 0x0b0724,
-      metalness: 0.45,
+      color: 0x241a52,
+      metalness: 0.4,
       roughness: 0.3,
-      emissive: 0x1a0f44,
-      emissiveIntensity: 0.6,
+      emissive: 0x3a2a86,
+      emissiveIntensity: 0.85,
     });
     const top = new THREE.Mesh(new THREE.BoxGeometry(hx * 2, hy * 2, hz * 2), topMat);
     top.position.y = -hy;
@@ -226,10 +226,9 @@ export class Renderer {
     const aspect = this.camera.aspect;
     const halfV = Math.tan((this.camera.fov * Math.PI) / 180 / 2);
 
-    // Vertical span: from a little below the table top down through the legs cue,
-    // up to the tower crown, with headroom.
-    const spanY = maxY + 1.6;
-    const targetY = maxY * 0.45;
+    // Vertical span: table top through the crown, plus headroom for the fly-over.
+    const spanY = maxY + 2.4;
+    const targetY = maxY * 0.42;
     // Horizontal span: the largest footprint dimension plus margin.
     const spanX = 2 * Math.max(hx, hz) + 1.4;
 
@@ -237,9 +236,11 @@ export class Renderer {
     const dForWidth = spanX / 2 / (halfV * aspect);
     const dist = Math.max(dForHeight, dForWidth) * 1.12;
 
-    this.camera.position.set(0, targetY + dist * 0.34, dist);
+    this.camera.position.set(0, targetY + dist * 0.4, dist);
     this._target = new THREE.Vector3(0, targetY, 0);
     this.camera.lookAt(this._target);
+    // Approx world-Y of the top of the viewport, so the fly-over stays in frame.
+    this.viewTopY = targetY + dist * halfV;
     return this.camera.position.clone();
   }
 
