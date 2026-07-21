@@ -32,7 +32,7 @@ Pages (https://arallsopp.github.io/stackz/). See `.github/workflows/deploy.yml`.
 | `store.js` | All localStorage (best scores, airstrike bank, wins, mute) | game logic |
 | `hud.js` | All DOM: HUD, overlays, buttons, flash | physics, rules |
 | `config.js` | Cross-cutting gameplay tuning constants | logic |
-| `levels.js` | Level data + authoring helpers (column/jenga/spire/wall) | runtime state |
+| `levels.js` | Level data + authoring helpers (column/jenga/spire/wall/dominoes/pins/ramp) | runtime state |
 
 Dependency direction: `game` depends on everything; subsystems depend only on
 `render`/`physics` primitives and `config`. Keep it that way. `render.js`
@@ -42,8 +42,20 @@ re-exports `THREE` so other modules import it from there (one Three instance).
 
 Fixed-timestep physics (`FIXED_TIMESTEP`, capped at `MAX_SUBSTEPS`), then sync
 meshes to bodies, rotate the table/shield to their physics angles, update the
-airstrike, check win. `state`: `menu | playing | won`. `window.__game` is the
-test/debug handle (`__game.loadLevel(n)`, `__game.store`, `__game._frames`).
+airstrike, check win. `state`: `menu | playing | won | lost`. `window.__game` is
+the test/debug handle (`__game.loadLevel(n)`, `__game.store`, `__game._frames`).
+
+**Shots are ballistic** (`game._fire`): the tap is raycast onto the struck block
+(else a point at the tower's depth), then the ball is launched to ARC through it —
+horizontal speed fixed at `BALL_SPEED`, a vertical term cancels `GRAVITY` — so
+far/high stacks are reachable, not dropping short.
+
+**Modes** (`store.mode`, toggled on the start screen, persisted):
+- `normal` — authored par, SKIP hidden.
+- `learning` — SKIP shown; par auto-tunes via `store.learnedPar/recordParSample`
+  (running average of shots-to-clear, seeded with the authored par; a FAILED run
+  records `budget + FAIL_PAR_INCREMENT` so par climbs when a level is too hard).
+  `game.par` (effective par) drives the ball budget, HUD, and stars.
 
 ## Coordinate system & conventions
 
@@ -66,8 +78,15 @@ or `{ shape:'cyl', pos:[x,y,z], radius, height, axis:'x'|'y'|'z', color, ... }`.
 The optional physics fields fall through to Rapier defaults when omitted; **low
 `friction` is the main tool for fragility** — it lets toppled pieces slide off the
 table. Author blocks resting on the table (y>0) with exact contacts (a tiny `GAP`)
-so they load stable. `spin` defaults to `DEFAULT_SPIN` if omitted. Airstrikes are
-a **global** bank (Store), not per-level.
+so they load stable. Airstrikes are a **global** bank (Store), not per-level.
+
+**Every level spins** — `spin` defaults to `DEFAULT_SPIN`; don't set `spin: 0`.
+The turntable fights delicate structures: tall/tippy stacks and dominoes want a
+gentle spin (~0.1–0.14), and a **roller on a ramp needs the gentlest of all
+(~0.08)** because a spinning shelf works a parked boulder loose over ~5–7s (fine —
+players fire well before that, and a self-released boulder just rolls down anyway).
+When adding a delicate level, drive it headless for 4–8s and confirm nothing
+self-solves in the pre-fire window.
 
 Helpers: `column / jenga / spire / wall / dominoes / pins / ramp` build common
 structures; `rotateY90` composes walls into a ring. `ramp({ dir, roller })` makes
@@ -91,8 +110,8 @@ tight ball budget both punish big piles.
 (loads solid, never self-solves, no WASM panic) reliably; they can't judge
 difficulty. Ship provisional pars, then calibrate from the player's real attempts.
 
-There's a **SKIP** button (top-centre, `#skip-btn` → `onSkip`) to jump levels while
-authoring/testing.
+A **SKIP** button (top-centre, `#skip-btn` → `onSkip`) jumps levels while
+authoring/testing — visible only in **Learning mode** (see Game loop § Modes).
 
 ## Physics gotchas (learned the hard way — don't reintroduce)
 
