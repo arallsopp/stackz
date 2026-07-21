@@ -84,33 +84,34 @@ export class Renderer {
     if (this.platform) this.remove(this.platform);
     const g = new THREE.Group();
 
+    // Neutral grey so the base clearly reads as "not part of the level".
     const topMat = new THREE.MeshStandardMaterial({
-      color: 0x241a52,
-      metalness: 0.4,
-      roughness: 0.3,
-      emissive: 0x3a2a86,
-      emissiveIntensity: 0.85,
+      color: 0x6a6e78,
+      metalness: 0.2,
+      roughness: 0.7,
+      emissive: 0x24262c,
+      emissiveIntensity: 0.35,
     });
     const top = new THREE.Mesh(new THREE.BoxGeometry(hx * 2, hy * 2, hz * 2), topMat);
     top.position.y = -hy;
     top.receiveShadow = true;
     g.add(top);
 
-    // Glowing edge frame so the table rim reads clearly against the dark void.
+    // Subtle grey edge so the table rim reads against the dark void (not neon).
     const edges = new THREE.LineSegments(
       new THREE.EdgesGeometry(new THREE.BoxGeometry(hx * 2, hy * 2, hz * 2)),
-      new THREE.LineBasicMaterial({ color: 0x12f7ff })
+      new THREE.LineBasicMaterial({ color: 0x9aa0ac })
     );
     edges.position.y = -hy;
     g.add(edges);
 
-    // Four legs, inset from the corners, tapering into the void.
+    // Four grey legs, inset from the corners, tapering into the void.
     const legMat = new THREE.MeshStandardMaterial({
-      color: 0x120a2e,
-      metalness: 0.5,
-      roughness: 0.4,
-      emissive: 0x2a1a5a,
-      emissiveIntensity: 0.35,
+      color: 0x3a3d45,
+      metalness: 0.3,
+      roughness: 0.6,
+      emissive: 0x141519,
+      emissiveIntensity: 0.3,
     });
     const legH = 3.2;
     const inset = 0.35;
@@ -226,17 +227,18 @@ export class Renderer {
     const aspect = this.camera.aspect;
     const halfV = Math.tan((this.camera.fov * Math.PI) / 180 / 2);
 
-    // Vertical span: table top through the crown, plus headroom for the fly-over.
-    const spanY = maxY + 2.4;
-    const targetY = maxY * 0.42;
+    // Vertical span: table top through the crown, plus a little headroom.
+    const spanY = maxY + 2.0;
+    const targetY = maxY * 0.44;
     // Horizontal span: the largest footprint dimension plus margin.
     const spanX = 2 * Math.max(hx, hz) + 1.4;
 
     const dForHeight = spanY / 2 / halfV;
     const dForWidth = spanX / 2 / (halfV * aspect);
-    const dist = Math.max(dForHeight, dForWidth) * 1.12;
+    const dist = Math.max(dForHeight, dForWidth) * 1.06;
 
-    this.camera.position.set(0, targetY + dist * 0.4, dist);
+    // Gentle, near-eye-level angle (like the original), not looking down.
+    this.camera.position.set(0, targetY + dist * 0.2, dist);
     this._target = new THREE.Vector3(0, targetY, 0);
     this.camera.lookAt(this._target);
     // Approx world-Y of the top of the viewport, so the fly-over stays in frame.
