@@ -161,7 +161,6 @@ export class Renderer {
     const mesh = new THREE.Mesh(geo, this._neonMaterial(color));
     mesh.castShadow = true;
     mesh.receiveShadow = true;
-    this._addWire(mesh, geo, color);
     this.scene.add(mesh);
     return mesh;
   }
@@ -171,7 +170,6 @@ export class Renderer {
     const mesh = new THREE.Mesh(geo, this._neonMaterial(color));
     mesh.castShadow = true;
     mesh.receiveShadow = true;
-    this._addWire(mesh, geo, color);
     this.scene.add(mesh);
     return mesh;
   }
@@ -189,14 +187,6 @@ export class Renderer {
     mesh.castShadow = true;
     this.scene.add(mesh);
     return mesh;
-  }
-
-  _addWire(mesh, geo, color) {
-    const wire = new THREE.LineSegments(
-      new THREE.EdgesGeometry(geo),
-      new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.35 })
-    );
-    mesh.add(wire);
   }
 
   remove(mesh) {
