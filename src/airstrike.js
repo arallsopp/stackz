@@ -21,13 +21,17 @@ export class Airstrike {
     this._planeHalfH = 1;
   }
 
-  // Load + normalise the glTF C-130. The model is centred and its fuselage
-  // aligned so the nose points along local -Z; the outer `template` group is then
-  // steered each frame with lookAt() so the nose always follows the flight path.
+  // Load + normalise the glTF C-130 so the nose points along the holder's -Z and
+  // the tail fin points +Y (up). The outer `template` is then steered each frame
+  // with lookAt() so the nose follows the flight path. Robust to the model's
+  // native orientation: it locates the tail-fin tip (highest vertex) to identify
+  // the fuselage axis and the nose direction, rather than assuming the longest
+  // axis is the fuselage (for a plane the longest horizontal is the wingspan).
   // Safe to await; on failure we keep the cartoon sprite.
   async loadModel(url) {
     const gltf = await new GLTFLoader().loadAsync(url);
     const model = gltf.scene;
+    model.updateMatrixWorld(true);
     model.traverse((o) => {
       if (o.isMesh) {
         o.castShadow = true;
@@ -41,24 +45,49 @@ export class Airstrike {
     box.getSize(size);
     box.getCenter(center);
 
-    // Holder carries the centring + fuselage alignment (the "rig"); the outer
-    // template is what we position and lookAt during flight.
+    // Highest world-space vertex ≈ the tail-fin tip (at the BACK of the fuselage).
+    const fin = new THREE.Vector3(0, -Infinity, 0);
+    const v = new THREE.Vector3();
+    model.traverse((o) => {
+      if (!o.isMesh) return;
+      const pos = o.geometry.attributes.position;
+      for (let i = 0; i < pos.count; i++) {
+        v.fromBufferAttribute(pos, i).applyMatrix4(o.matrixWorld);
+        if (v.y > fin.y) fin.copy(v);
+      }
+    });
+
+    // Fuselage = the horizontal axis the tail fin sits at the end of.
+    const rx = Math.abs(fin.x - center.x) / (size.x / 2 || 1);
+    const rz = Math.abs(fin.z - center.z) / (size.z / 2 || 1);
+    // Rotate about Y so the nose (opposite the fin) points toward -Z.
+    let yaw;
+    if (rx >= rz) {
+      // Fuselage along X; fin at -X ⇒ nose at +X ⇒ map +X→-Z (yaw +90°), else -90°.
+      yaw = fin.x < center.x ? Math.PI / 2 : -Math.PI / 2;
+    } else {
+      // Fuselage along Z; fin at -Z ⇒ nose at +Z ⇒ rotate 180°, else already correct.
+      yaw = fin.z < center.z ? Math.PI : 0;
+    }
+
     const holder = new THREE.Group();
     model.position.sub(center);
     holder.add(model);
-    // Align the fuselage (longest horizontal axis) with Z.
-    if (size.x > size.z) holder.rotation.y = Math.PI / 2;
-    const s = 5.5 / Math.max(size.x, size.z);
-    holder.scale.setScalar(s);
-    this._planeHalfH = (size.y * s) / 2;
-    // Half-extents (wings X, height Y, fuselage Z) for the flying collider.
-    this._planeHalf = { x: (size.x * s) / 2, y: (size.y * s) / 2, z: (size.z * s) / 2 };
+    holder.rotation.y = yaw;
+    holder.scale.setScalar(5.5 / Math.max(size.x, size.z));
+    holder.updateMatrixWorld(true);
+
+    // Collider half-extents from the FINAL oriented bounds.
+    const fbox = new THREE.Box3().setFromObject(holder);
+    const fs = new THREE.Vector3();
+    fbox.getSize(fs);
+    this._planeHalf = { x: fs.x / 2, y: fs.y / 2, z: fs.z / 2 };
+    this._planeHalfH = fs.y / 2;
 
     const template = new THREE.Group();
     template.add(holder);
     this.template = template;
-    // +1: nose is local -Z (lookAt target ahead). Flip to -1 if it flies backwards.
-    this._noseSign = 1;
+    this._noseSign = 1; // nose baked to -Z, so lookAt target is ahead (+tangent)
     return true;
   }
 
