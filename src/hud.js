@@ -10,7 +10,8 @@ export class Hud {
       app: el('app'),
       hud: el('hud'),
       level: el('hud-level'),
-      shots: el('hud-shots'),
+      balls: el('hud-balls'),
+      ballsPill: el('hud-balls-pill'),
       par: el('hud-par'),
       airstrikeBtn: el('airstrike-btn'),
       airstrikeCount: el('airstrike-count'),
@@ -22,12 +23,17 @@ export class Hud {
       winPar: el('win-par'),
       winBest: el('win-best'),
       stars: el('stars'),
+      loseScreen: el('lose-screen'),
+      loseBest: el('lose-best'),
+      recordLine: el('record-line'),
+      recordLevel: el('record-level'),
     };
     this._flashEl = null;
 
     el('start-btn').addEventListener('click', () => handlers.onStart?.());
     el('replay-btn').addEventListener('click', () => handlers.onReplay?.());
     el('next-btn').addEventListener('click', () => handlers.onNext?.());
+    el('lose-retry-btn').addEventListener('click', () => handlers.onReplay?.());
     this.el.airstrikeBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       handlers.onAirstrike?.();
@@ -54,12 +60,21 @@ export class Hud {
     this.el.level.textContent = n;
   }
 
+  // The furthest level reached, shown as a record on the start screen. `n` is the
+  // 1-based level number; hidden until the player has actually cleared past L1.
+  setRecordLevel(n) {
+    this.el.recordLevel.textContent = n;
+    this.el.recordLine.classList.toggle('hidden', n <= 1);
+  }
+
   setPar(n) {
     this.el.par.textContent = n;
   }
 
-  setShots(n) {
-    this.el.shots.textContent = n;
+  // Balls remaining for this level (counts down toward zero).
+  setBalls(n) {
+    this.el.balls.textContent = n;
+    this.el.ballsPill.classList.toggle('low', n <= 1);
   }
 
   setAirstrikes(count) {
@@ -92,12 +107,23 @@ export class Hud {
     this.el.winScreen.classList.add('hidden');
   }
 
-  // stats: { shots, par, stars, bestText }
-  showWin({ shots, par, stars, bestText }, delay = 700) {
-    this.el.winShots.textContent = shots;
+  // stats: { shots, par, stars, bestText, airstrikeUsed }
+  showWin({ shots, par, stars, bestText, airstrikeUsed }, delay = 700) {
+    // An airstrike voids the score for the level (no shots count, no stars).
+    this.el.winShots.textContent = airstrikeUsed ? '—' : shots;
     this.el.winPar.textContent = par;
     this.el.winBest.textContent = bestText;
-    this.el.stars.querySelectorAll('.star').forEach((s, i) => s.classList.toggle('on', i < stars));
+    this.el.stars.querySelectorAll('.star').forEach((s, i) => s.classList.toggle('on', !airstrikeUsed && i < stars));
     setTimeout(() => this.el.winScreen.classList.remove('hidden'), delay);
+  }
+
+  hideLose() {
+    this.el.loseScreen.classList.add('hidden');
+  }
+
+  // stats: { bestText }
+  showLose({ bestText = '' } = {}, delay = 600) {
+    this.el.loseBest.textContent = bestText;
+    setTimeout(() => this.el.loseScreen.classList.remove('hidden'), delay);
   }
 }

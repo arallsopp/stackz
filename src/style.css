@@ -224,6 +224,14 @@ body {
   opacity: 0.85;
 }
 
+.record-line {
+  margin: 0 0 18px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  opacity: 0.85;
+}
+
 .hint {
   margin-top: 22px;
   font-size: 12px;
@@ -278,6 +286,23 @@ body {
   letter-spacing: 2px;
   color: var(--cyan);
   text-shadow: 0 0 22px rgba(18, 247, 255, 0.6);
+}
+
+.lose-title {
+  font-size: clamp(28px, 8vw, 40px);
+  font-weight: 900;
+  letter-spacing: 2px;
+  color: var(--magenta);
+  text-shadow: 0 0 22px rgba(255, 43, 214, 0.55);
+}
+
+/* Balls pill flashes a warning when ammo runs low. */
+#hud-balls-pill.low {
+  border-color: rgba(255, 43, 214, 0.6);
+  box-shadow: 0 0 18px rgba(255, 43, 214, 0.3);
+}
+#hud-balls-pill.low .hud-value {
+  color: var(--magenta);
 }
 
 .stars {

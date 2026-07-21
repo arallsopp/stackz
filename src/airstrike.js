@@ -87,7 +87,10 @@ export class Airstrike {
     const template = new THREE.Group();
     template.add(holder);
     this.template = template;
-    this._noseSign = 1; // nose baked to -Z, so lookAt target is ahead (+tangent)
+    // lookAt() aims the holder's local -Z at the target. The model's nose ended up
+    // along +Z after the orientation fix above, so aim -Z BEHIND the plane (against
+    // the tangent) to swing the nose forward along the flight path.
+    this._noseSign = -1;
     return true;
   }
 

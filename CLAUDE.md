@@ -8,7 +8,10 @@ audio (gesture unlock, `webkitAudioContext`) and input (pointer events, safe-are
 
 - `npm run dev` — dev server (HMR)
 - `npm run build` — production build to `dist/` (also generates the PWA SW). Run
-  this after edits to catch import/API errors; a git hook builds on JS changes.
+  this after edits to catch import/API errors. A Claude Code `PostToolUse` hook
+  (`.claude/settings.json` → `.claude/hooks/build-check.sh`) auto-builds after any
+  edit to `src/*.js`, `src/*.css`, `index.html`, or `vite.config.js` and blocks on
+  failure (needs `jq`).
 - `npm run preview -- --port 4173` — serve `dist/` for headless testing
 - `node scripts/gen-icons.mjs` — regenerate PWA icons from `public/favicon.svg`
 

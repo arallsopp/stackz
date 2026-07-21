@@ -31,13 +31,14 @@ export class Physics {
     this._addPlatform(platform, spin);
   }
 
-  // A counter-rotating shield: `arms` vertical bars orbiting the tower on one
-  // kinematic body, so incoming shots are blocked at certain angles/times.
-  // `spin` (rad/s, typically opposite the platform) sets the rotation rate.
-  addShield({ radius, height, arms = 3, spin = -0.8 }) {
+  // A counter-rotating shield: `arms` vertical bars orbiting the tower (well
+  // outside it) on one kinematic body, so incoming shots are blocked at certain
+  // angles/times. Arms rise from `ringY` (below the table) to `top`, at the wide
+  // `radius`. `spin` (rad/s, opposite the platform and slower) sets the rate.
+  addShield({ radius, top, ringY = -1.4, arms = 3, spin = -0.5 }) {
     const body = this.world.createRigidBody(RAPIER.RigidBodyDesc.kinematicPositionBased());
-    const armH = Math.max(height - 0.3, 0.5);
-    const y = 0.15 + armH / 2;
+    const armH = Math.max(top - ringY, 0.5);
+    const y = ringY + armH / 2;
     for (let i = 0; i < arms; i++) {
       const a = (i / arms) * Math.PI * 2;
       const col = RAPIER.ColliderDesc.cuboid(0.22, armH / 2, 0.22)

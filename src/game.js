@@ -14,8 +14,10 @@ import {
   MAX_BALLS,
   BALL_SPEED,
   BALL_RADIUS,
+  BALL_BUDGET_BONUS,
+  LOSE_GRACE_MS,
+  PLATFORM_MARGIN,
   DEFAULT_SPIN,
-  AIRSTRIKE_SHOT_COST,
   WINS_PER_AIRSTRIKE,
   STAR_PAR_OFFSET_2,
   SHAKE_FIRE,
@@ -33,8 +35,11 @@ export class Game {
     this.blocks = [];
     this.balls = [];
     this.levelIndex = 0;
-    this.shots = 0;
-    this.state = 'menu'; // menu | playing | won
+    this.shots = 0; // balls fired this level
+    this.ballBudget = 0; // balls allowed this level (par + BALL_BUDGET_BONUS)
+    this.airstrikeUsed = false; // an airstrike voids the level's score
+    this._loseAt = null; // timestamp to declare a loss once the dust settles
+    this.state = 'menu'; // menu | playing | won | lost
     this._accum = 0;
     this._last = 0;
     this._frames = 0;
@@ -93,6 +98,7 @@ export class Game {
       },
     });
     this.hud.setMuted(this.audio.isMuted());
+    this.hud.setRecordLevel(this.store.highestLevel + 1); // furthest reached (1-based)
 
     // Tap-to-fire on the canvas (input stays with the game; display with the Hud).
     this.renderer.canvas.addEventListener('pointerdown', (e) => {
@@ -132,23 +138,33 @@ export class Game {
 
     this.levelIndex = index;
     this.shots = 0;
+    this.ballBudget = level.par + BALL_BUDGET_BONUS;
+    this.airstrikeUsed = false;
+    this._loseAt = null;
     this.state = 'playing';
     this._impactMuteUntil = performance.now() + SETTLE_QUIET_MS;
+    this.store.recordHighestLevel(index); // keep the furthest level reached
 
     for (const spec of level.blocks) this._spawnBlock(spec);
 
-    // Optional counter-rotating shield on harder levels. It enlarges the scene,
-    // so the camera framing accounts for its radius and height.
-    let frame = { hx: platform.hx, hz: platform.hz, maxY };
+    // Optional counter-rotating shield on harder levels. It orbits WELL outside the
+    // tower (deliberately wide, its ring below the table), so it never touches the
+    // blocks and is free to extend beyond the viewport — the camera frames only the
+    // tower, not the shield.
     if (level.shield) {
-      const radius = Math.max(platform.hx, platform.hz) + 0.6;
-      const height = maxY + 0.6;
-      this.shield.build({ radius, height, arms: level.shield.arms, speed: level.shield.speed });
-      frame = { hx: radius, hz: radius, maxY: Math.max(maxY, height) };
+      const radius = Math.max(platform.hx, platform.hz) + 2.6;
+      this.shield.build({
+        radius,
+        top: maxY + 0.4,
+        ringY: -1.4,
+        arms: level.shield.arms,
+        speed: level.shield.speed,
+      });
     }
-    this._camBase.copy(this.renderer.frameScene(frame));
+    this._camBase.copy(this.renderer.frameScene({ hx: platform.hx, hz: platform.hz, maxY }));
 
     this.hud.hideWin();
+    this.hud.hideLose();
     this.hud.setLevel(index + 1);
     this.hud.setPar(level.par);
     this._updateHud();
@@ -176,8 +192,10 @@ export class Game {
         minZ = Math.min(minZ, z - hd); maxZ = Math.max(maxZ, z + hd);
       }
     }
-    const hx = Math.max(Math.abs(minX), Math.abs(maxX), 0.4);
-    const hz = Math.max(Math.abs(minZ), Math.abs(maxZ), 0.4);
+    // A margin so the table visibly overhangs the base — it reads as scenery, not
+    // as a block to shoot at.
+    const hx = Math.max(Math.abs(minX), Math.abs(maxX), 0.4) + PLATFORM_MARGIN;
+    const hz = Math.max(Math.abs(minZ), Math.abs(maxZ), 0.4) + PLATFORM_MARGIN;
     return { platform: { hx, hy: 0.5, hz }, maxY };
   }
 
@@ -213,6 +231,7 @@ export class Game {
   // ---- actions --------------------------------------------------------------
 
   _fire(clientX, clientY) {
+    if (this.shots >= this.ballBudget) return; // out of balls
     const ray = this.renderer.pointerRay(clientX, clientY);
     // Launch from just in front of the camera, flying toward the tapped point.
     const origin = ray.origin.clone().addScaledVector(ray.direction, 1.2);
@@ -233,6 +252,8 @@ export class Game {
     }
 
     this.shots++;
+    // Last ball spent: start the grace clock; a loss is declared if nothing wins.
+    if (this.shots >= this.ballBudget) this._loseAt = performance.now() + LOSE_GRACE_MS;
     this._updateHud();
     this.hud.flash(clientX, clientY);
     this._kick(SHAKE_FIRE);
@@ -245,7 +266,7 @@ export class Game {
     const live = this.blocks.filter((b) => !b.cleared).map((b) => b.body);
     if (!this.airstrike.launch(live, this._bounds)) return;
     this.store.spendAirstrike(); // scarce, global resource
-    this.shots += AIRSTRIKE_SHOT_COST; // powerful, so it carries a scoring cost
+    this.airstrikeUsed = true; // powerful, so it voids this level's score
     this._updateHud();
   }
 
@@ -273,6 +294,7 @@ export class Game {
       this.shield.update();
       this.airstrike.update(dt);
       this._checkWin(false);
+      this._checkLose();
     }
 
     this._applyShake(dt);
@@ -319,21 +341,51 @@ export class Game {
 
   _win() {
     this.state = 'won';
+    this._loseAt = null;
     this.audio.win();
     const level = LEVELS[this.levelIndex];
 
-    // Persist progress: personal best per level + a win toward airstrike refills.
-    const isBest = this.store.recordScore(this.levelIndex, this.shots);
+    // A win always counts toward airstrike refills, but a score is only recorded
+    // when the level was cleared WITHOUT an airstrike (an airstrike voids it).
     this.store.registerWin(WINS_PER_AIRSTRIKE);
-    const best = this.store.bestScore(this.levelIndex);
+
+    let bestText;
+    if (this.airstrikeUsed) {
+      bestText = 'Airstrike used — no score recorded';
+    } else {
+      const isBest = this.store.recordScore(this.levelIndex, this.shots);
+      const best = this.store.bestScore(this.levelIndex);
+      bestText = isBest ? '★ NEW BEST!' : `Best: ${best} shots`;
+    }
 
     this.hud.showWin({
       shots: this.shots,
       par: level.par,
       stars: this._stars(this.shots, level.par),
-      bestText: isBest ? '★ NEW BEST!' : `Best: ${best} shots`,
+      bestText,
+      airstrikeUsed: this.airstrikeUsed,
     });
     this._updateHud(); // reflect any airstrike replenishment
+  }
+
+  // Out of balls with the stack still standing (and nothing left in flight) ends
+  // the level. The airstrike, if in progress, gets a chance to finish first.
+  _checkLose() {
+    if (this.state !== 'playing' || this._loseAt == null) return;
+    if (this.airstrike.busy) {
+      this._loseAt = performance.now() + LOSE_GRACE_MS; // let the run resolve
+      return;
+    }
+    if (performance.now() < this._loseAt) return;
+    this._lose();
+  }
+
+  _lose() {
+    this.state = 'lost';
+    this._loseAt = null;
+    this.audio.lose();
+    const best = this.store.bestScore(this.levelIndex);
+    this.hud.showLose({ bestText: best != null ? `Best: ${best} shots` : '' });
   }
 
   _stars(shots, par) {
@@ -345,7 +397,7 @@ export class Game {
   // ---- juice ----------------------------------------------------------------
 
   _updateHud() {
-    this.hud.setShots(this.shots);
+    this.hud.setBalls(Math.max(0, this.ballBudget - this.shots));
     this.hud.setAirstrikes(this.store.airstrikes);
   }
 

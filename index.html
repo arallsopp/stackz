@@ -24,9 +24,9 @@
             <span class="hud-label">LEVEL</span>
             <span id="hud-level" class="hud-value">1</span>
           </div>
-          <div class="hud-pill">
-            <span class="hud-label">SHOTS</span>
-            <span id="hud-shots" class="hud-value">0</span>
+          <div class="hud-pill" id="hud-balls-pill">
+            <span class="hud-label">BALLS</span>
+            <span id="hud-balls" class="hud-value">0</span>
           </div>
         </div>
         <div class="hud-right">
@@ -51,9 +51,10 @@
       <div id="start-screen" class="overlay">
         <div class="overlay-card">
           <h1 class="logo">STACK<span class="logo-z">Z</span></h1>
-          <p class="tagline">Tap to launch. Obliterate the stack.<br />Clear the platform in as few shots as you can.</p>
+          <p class="tagline">Tap to launch. Obliterate the stack.<br />Clear the platform before you run out of balls.</p>
+          <p id="record-line" class="record-line hidden">FURTHEST: LEVEL <span id="record-level" class="accent">1</span></p>
           <button id="start-btn" class="btn btn-primary">TAP TO START</button>
-          <p class="hint">Tap anywhere to fire a ball toward that point.<br />Out of ideas? Call an <b>AIRSTRIKE</b>.</p>
+          <p class="hint">Tap anywhere to fire a ball toward that point. You get a limited number per level.<br />Out of ideas? Call an <b>AIRSTRIKE</b> — but it voids your score.</p>
           <p class="credit">C-130 model by <a href="https://sketchfab.com/slava2019" target="_blank" rel="noopener">slava2019</a> — <a href="http://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC-BY-4.0</a></p>
         </div>
       </div>
@@ -73,6 +74,18 @@
           <div class="overlay-actions">
             <button id="replay-btn" class="btn btn-ghost">REPLAY</button>
             <button id="next-btn" class="btn btn-primary">NEXT LEVEL</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Out of balls -->
+      <div id="lose-screen" class="overlay hidden">
+        <div class="overlay-card">
+          <h2 class="lose-title">OUT OF BALLS</h2>
+          <p class="win-stats">The stack still stands.<br />Reload and try a sharper angle.</p>
+          <p id="lose-best" class="win-best"></p>
+          <div class="overlay-actions">
+            <button id="lose-retry-btn" class="btn btn-primary">RETRY</button>
           </div>
         </div>
       </div>

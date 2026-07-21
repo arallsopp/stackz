@@ -163,6 +163,27 @@ export class Audio {
     });
   }
 
+  // A sad descending trio for running out of balls.
+  lose() {
+    if (!this._ready()) return;
+    const t0 = this.ctx.currentTime;
+    const notes = [392.0, 329.63, 261.63];
+    notes.forEach((f, i) => {
+      const t = t0 + i * 0.16;
+      const o = this.ctx.createOscillator();
+      o.type = 'sawtooth';
+      o.frequency.setValueAtTime(f, t);
+      o.frequency.exponentialRampToValueAtTime(f * 0.94, t + 0.3);
+      const g = this.ctx.createGain();
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.22, t + 0.03);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.34);
+      o.connect(g).connect(this.master);
+      o.start(t);
+      o.stop(t + 0.36);
+    });
+  }
+
   // ---- Hercules engine drone (loops during an airstrike run) ---------------
 
   startDrone() {

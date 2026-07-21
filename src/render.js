@@ -79,14 +79,67 @@ export class Renderer {
     this._addStars();
   }
 
+  // A hazard-striped tech-plate texture for the table top, so it unmistakably
+  // reads as scenery ("don't shoot me") rather than a block. Cached + reused.
+  _platformTexture() {
+    if (this._platTex) return this._platTex;
+    const S = 256;
+    const c = document.createElement('canvas');
+    c.width = c.height = S;
+    const g = c.getContext('2d');
+
+    // Base plate.
+    g.fillStyle = '#5c616b';
+    g.fillRect(0, 0, S, S);
+
+    // Inner panel grid (reads as machined plating).
+    g.strokeStyle = 'rgba(20,22,28,0.55)';
+    g.lineWidth = 2;
+    const step = S / 8;
+    for (let i = 1; i < 8; i++) {
+      g.beginPath();
+      g.moveTo(i * step, 0);
+      g.lineTo(i * step, S);
+      g.moveTo(0, i * step);
+      g.lineTo(S, i * step);
+      g.stroke();
+    }
+
+    // Diagonal hazard chevrons around the border.
+    const band = 30;
+    g.save();
+    g.beginPath();
+    g.rect(0, 0, S, S);
+    g.rect(band, band, S - 2 * band, S - 2 * band);
+    g.clip('evenodd');
+    g.fillStyle = '#20222a';
+    g.fillRect(0, 0, S, S);
+    g.strokeStyle = '#e6c02e';
+    g.lineWidth = 12;
+    for (let x = -S; x < S * 2; x += 34) {
+      g.beginPath();
+      g.moveTo(x, -10);
+      g.lineTo(x + S + 20, S + 10);
+      g.stroke();
+    }
+    g.restore();
+
+    const tex = new THREE.CanvasTexture(c);
+    tex.anisotropy = 4;
+    this._platTex = tex;
+    return tex;
+  }
+
   // Build the table (the target surface) sized to the tower's base. Top face y=0.
   setPlatform({ hx, hy, hz }) {
     if (this.platform) this.remove(this.platform);
     const g = new THREE.Group();
 
-    // Neutral grey so the base clearly reads as "not part of the level".
+    // Neutral grey + hazard texture so the base clearly reads as "not part of the
+    // level" — players were shooting the table thinking it was a block.
     const topMat = new THREE.MeshStandardMaterial({
-      color: 0x6a6e78,
+      color: 0x8b909a,
+      map: this._platformTexture(),
       metalness: 0.2,
       roughness: 0.7,
       emissive: 0x24262c,

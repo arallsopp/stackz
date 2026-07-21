@@ -41,16 +41,27 @@ function column(n, { cx = 0, cz = 0, bw = 1, bh = 0.8, bd = 1 } = {}) {
 
 // A Jenga tower: `layers` layers of 3 bars, orientation alternating 90°.
 // Inherently stable at load, spectacular when it topples.
-function jenga(layers, { cx = 0, cz = 0, barLen = 3, barW = 0.96, barH = 0.6 } = {}) {
+//
+// `pull` = list of layer indices whose CENTRE bar is slid out along its length
+// (a half-pulled Jenga piece). The end pokes out past the stack as a hittable
+// "critical block": knock it clear and that layer loses its middle support, so
+// a good hit can leverage the whole tower apart. The two outer bars still bridge
+// the gap, so the stack loads rock-solid.
+function jenga(layers, { cx = 0, cz = 0, barLen = 3, barW = 0.96, barH = 0.6, pull = [] } = {}) {
   const blocks = [];
   const step = barW + GAP;
+  const pullOut = barLen * 0.42; // how far the critical piece protrudes
   for (let l = 0; l < layers; l++) {
     const y = barH / 2 + l * (barH + GAP);
+    // Alternate which side successive pulled pieces poke out, so the mass stays
+    // roughly centred and the handles are easy to reach from different angles.
+    const pi = pull.indexOf(l);
     for (let k = -1; k <= 1; k++) {
+      const nudge = k === 0 && pi >= 0 ? pullOut * (pi % 2 === 0 ? 1 : -1) : 0;
       if (l % 2 === 0) {
-        blocks.push({ shape: 'box', pos: [cx, y, cz + k * step], size: [barLen, barH, barW], color: nextColor() });
+        blocks.push({ shape: 'box', pos: [cx + nudge, y, cz + k * step], size: [barLen, barH, barW], color: nextColor() });
       } else {
-        blocks.push({ shape: 'box', pos: [cx + k * step, y, cz], size: [barW, barH, barLen], color: nextColor() });
+        blocks.push({ shape: 'box', pos: [cx + k * step, y, cz + nudge], size: [barW, barH, barLen], color: nextColor() });
       }
     }
   }
@@ -93,13 +104,15 @@ function buildLevels() {
     ],
   });
 
-  // L3 — JENGA. Rock-solid on load, glorious collapse. 7 layers tall.
+  // L3 — JENGA. Rock-solid on load, glorious collapse. 7 layers tall. Centre bars
+  // on the base and two mid layers are half-pulled: hittable critical blocks that
+  // leverage the tower apart when knocked clear.
   reset();
   levels.push({
     name: 'JENGA',
     par: 3,
     airstrikes: 1,
-    blocks: jenga(7, { barLen: 2.9, barW: 0.94, barH: 0.58 }),
+    blocks: jenga(7, { barLen: 2.9, barW: 0.94, barH: 0.58, pull: [0, 2, 4] }),
   });
 
   // L4 — DRUM TOWER. Plates and upright drums; a side-log crown that rolls.
@@ -126,7 +139,8 @@ function buildLevels() {
     name: 'ZIGGURAT',
     par: 5,
     airstrikes: 2,
-    shield: { arms: 3, speed: -0.7 }, // counter-rotates the platform
+    // Counter-rotates the platform (which spins at DEFAULT_SPIN 0.18), slower.
+    shield: { arms: 3, speed: -0.12 },
     blocks: spire(8, { base: 2.0, top: 0.7, bh: 0.62 }),
   });
 
@@ -137,7 +151,7 @@ function buildLevels() {
     par: 6,
     airstrikes: 2,
     spin: 0.18,
-    shield: { arms: 3, speed: -1.0 },
+    shield: { arms: 4, speed: -0.1 }, // opposite the platform, lazily slower
     blocks: [
       ...column(5, { cx: -1.2, cz: -1.2, bw: 0.9, bh: 0.8, bd: 0.9 }),
       ...column(5, { cx: 1.2, cz: -1.2, bw: 0.9, bh: 0.8, bd: 0.9 }),

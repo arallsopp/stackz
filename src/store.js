@@ -6,6 +6,7 @@ const KEY = 'stackz.save.v1';
 
 const DEFAULTS = {
   bestScores: {}, // { [levelIndex]: fewestShots }
+  highestLevel: 0, // furthest level index reached (progress resumes here)
   airstrikes: 1, // current airstrike bank (scarce, global)
   wins: 0, // total level completions (drives airstrike replenishment)
   muted: false,
@@ -46,6 +47,19 @@ export class Store {
       this._write();
     }
     return isBest;
+  }
+
+  // --- progress ---
+  get highestLevel() {
+    return this.data.highestLevel;
+  }
+
+  // Remember the furthest level the player has reached (never regresses).
+  recordHighestLevel(levelIndex) {
+    if (levelIndex > this.data.highestLevel) {
+      this.data.highestLevel = levelIndex;
+      this._write();
+    }
   }
 
   // --- airstrike bank ---
