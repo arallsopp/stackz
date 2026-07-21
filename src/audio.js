@@ -8,19 +8,14 @@
 //  - iOS honours the hardware mute switch for Web Audio; that's expected for a
 //    casual game. The in-game mute toggle is independent and persisted.
 
-const STORE_KEY = 'stackz-muted';
-
 export class Audio {
-  constructor() {
+  // opts: { muted?: boolean, onMuteChange?: (muted) => void }
+  // Persistence is injected so audio stays decoupled from storage.
+  constructor(opts = {}) {
     this.ctx = null;
     this.master = null;
-    this.muted = (() => {
-      try {
-        return localStorage.getItem(STORE_KEY) === '1';
-      } catch {
-        return false;
-      }
-    })();
+    this.muted = !!opts.muted;
+    this._onMuteChange = opts.onMuteChange || (() => {});
     this._lastImpact = 0;
     this.drone = null;
   }
@@ -58,9 +53,7 @@ export class Audio {
 
   setMuted(m) {
     this.muted = m;
-    try {
-      localStorage.setItem(STORE_KEY, m ? '1' : '0');
-    } catch {}
+    this._onMuteChange(m);
     if (this.master) {
       const t = this.ctx.currentTime;
       this.master.gain.cancelScheduledValues(t);

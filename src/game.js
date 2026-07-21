@@ -2,12 +2,14 @@ import { Renderer, THREE } from './render.js';
 import { Physics } from './physics.js';
 import { Airstrike } from './airstrike.js';
 import { Audio } from './audio.js';
+import { Store } from './store.js';
 import { LEVELS } from './levels.js';
 
 const FIXED = 1 / 60;
 const CLEAR_Y = -2.5; // a block below this has fallen off the platform
 const CULL_Y = -18; // fully remove meshes/bodies past this
 const MAX_BALLS = 6;
+const DEFAULT_SPIN = 0.18; // every level turns slowly unless it overrides `spin`
 
 export class Game {
   constructor() {
@@ -25,7 +27,13 @@ export class Game {
   async init() {
     this.renderer = new Renderer(document.getElementById('scene'));
     this.physics = await Physics.load();
-    this.audio = new Audio();
+    this.store = new Store();
+    this.audio = new Audio({
+      muted: this.store.muted,
+      onMuteChange: (m) => {
+        this.store.muted = m;
+      },
+    });
     this.airstrike = new Airstrike(this.renderer, this.physics);
     this.airstrike.audio = this.audio;
     this.airstrike.onDetonate = () => this._kick(0.5);
@@ -69,6 +77,7 @@ export class Game {
       winScreen: el('win-screen'),
       winShots: el('win-shots'),
       winPar: el('win-par'),
+      winBest: el('win-best'),
       stars: el('stars'),
     };
     this._syncMuteButton();
@@ -137,12 +146,11 @@ export class Game {
     // Size the table to the tower's base and frame the camera to fit it all.
     const { platform, maxY } = this._computeBounds(level);
     this._bounds = { maxY, hx: Math.max(platform.hx, platform.hz) };
-    this.physics.reset(platform, level.spin || 0);
+    this.physics.reset(platform, level.spin ?? DEFAULT_SPIN);
     this.renderer.setPlatform(platform);
 
     this.levelIndex = index;
     this.shots = 0;
-    this.airstrikesLeft = level.airstrikes;
     this.state = 'playing';
     this._impactMuteUntil = performance.now() + 500; // let the stack settle quietly
 
@@ -241,11 +249,11 @@ export class Game {
   }
 
   _callAirstrike() {
-    if (this.state !== 'playing' || this.airstrikesLeft <= 0 || this.airstrike.active) return;
+    if (this.state !== 'playing' || this.store.airstrikes <= 0 || this.airstrike.active) return;
     this.audio.click();
     const live = this.blocks.filter((b) => !b.cleared).map((b) => b.body);
     if (!this.airstrike.launch(live, this._bounds)) return;
-    this.airstrikesLeft--;
+    this.store.spendAirstrike(); // scarce, global resource
     this.shots += 2; // powerful, so it carries a scoring cost
     this._updateHud();
   }
@@ -323,10 +331,18 @@ export class Game {
     this.audio.win();
     const level = LEVELS[this.levelIndex];
     const stars = this._stars(this.shots, level.par);
+
+    // Persist progress: personal best per level + a win toward airstrike refills.
+    const isBest = this.store.recordScore(this.levelIndex, this.shots);
+    this.store.registerWin();
+
     this.ui.winShots.textContent = this.shots;
     this.ui.winPar.textContent = level.par;
+    const best = this.store.bestScore(this.levelIndex);
+    this.ui.winBest.textContent = isBest ? '★ NEW BEST!' : `Best: ${best} shots`;
     const starEls = this.ui.stars.querySelectorAll('.star');
     starEls.forEach((s, i) => s.classList.toggle('on', i < stars));
+    this._updateHud(); // reflect any airstrike replenishment
     setTimeout(() => this.ui.winScreen.classList.remove('hidden'), 700);
   }
 
@@ -340,8 +356,8 @@ export class Game {
 
   _updateHud() {
     this.ui.shots.textContent = this.shots;
-    this.ui.airstrikeCount.textContent = this.airstrikesLeft;
-    this.ui.airstrikeBtn.disabled = this.airstrikesLeft <= 0;
+    this.ui.airstrikeCount.textContent = this.store.airstrikes;
+    this.ui.airstrikeBtn.disabled = this.store.airstrikes <= 0;
   }
 
   _flash(x, y) {
