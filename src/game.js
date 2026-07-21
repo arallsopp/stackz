@@ -1,5 +1,5 @@
 import { Renderer, THREE } from './render.js';
-import { Physics } from './physics.js';
+import { Physics, GROUP_MECH } from './physics.js';
 import { Airstrike } from './airstrike.js';
 import { Shield } from './shield.js';
 import { Audio } from './audio.js';
@@ -164,7 +164,14 @@ export class Game {
     // Size the table to the tower's base and frame the camera to fit it all.
     const { platform, maxY } = this._computeBounds(level);
     this._bounds = { maxY, hx: Math.max(platform.hx, platform.hz) };
-    this.physics.reset(platform, level.spin ?? DEFAULT_SPIN);
+    // Sloping-base levels rigidly tilt the whole table + stack about the origin.
+    // (Tilt and turntable-spin don't mix — a tilted spinning table just wobbles —
+    // so a tilt level stays still.)
+    const tilt = level.tilt || 0;
+    this._tiltQuat = tilt ? new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), tilt) : null;
+    this._lastFixed = null; // most-recent fixed body, for hinge linking
+    platform.tilt = tilt;
+    this.physics.reset(platform, tilt ? 0 : (level.spin ?? DEFAULT_SPIN));
     this.renderer.setPlatform(platform);
 
     this.levelIndex = index;
@@ -239,29 +246,53 @@ export class Game {
 
   _spawnBlock(spec) {
     const pos = new THREE.Vector3(...spec.pos);
+    if (this._tiltQuat) pos.applyQuaternion(this._tiltQuat); // sloping-base levels
     // Optional per-block tuning (undefined falls back to physics defaults): low
     // friction makes toppled pieces slide off the table; density skews mass.
     const opts = { density: spec.density, friction: spec.friction, restitution: spec.restitution };
+    const mech = !!spec.mechanism; // non-clearing hardware (posts, kicker arms)
     if (spec.shape === 'box') {
       const [w, h, d] = spec.size;
-      let quat = null;
-      if (spec.rot) {
-        const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(...spec.rot));
-        quat = { x: q.x, y: q.y, z: q.z, w: q.w };
-      }
-      const body = this.physics.addBox(pos, { x: w / 2, y: h / 2, z: d / 2 }, quat, opts);
-      const mesh = this.renderer.makeBox(spec.size, spec.color);
-      this.blocks.push({ mesh, body, cleared: false });
+      const q = new THREE.Quaternion();
+      if (spec.rot) q.setFromEuler(new THREE.Euler(...spec.rot));
+      if (this._tiltQuat) q.premultiply(this._tiltQuat);
+      const quat = { x: q.x, y: q.y, z: q.z, w: q.w };
+      const half = { x: w / 2, y: h / 2, z: d / 2 };
+      // A hinged arm must not collide with its own post (GROUP_MECH), or the
+      // overlap at the hinge jams the joint.
+      if (spec.hinge) opts.group = GROUP_MECH;
+      const body = spec.fixed ? this.physics.addFixedBox(pos, half, quat) : this.physics.addBox(pos, half, quat, opts);
+      const mesh = this.renderer.makeBox(spec.size, spec.color, mech);
+      this.blocks.push({ mesh, body, cleared: false, mechanism: mech });
+      if (spec.fixed) this._lastFixed = body;
+      if (spec.hinge) this._linkHinge(body, spec.hinge);
     } else if (spec.shape === 'cyl') {
       // Rapier cylinder axis is local Y; rotate to lay logs on their side.
       const q = new THREE.Quaternion();
       if (spec.axis === 'x') q.setFromAxisAngle(new THREE.Vector3(0, 0, 1), Math.PI / 2);
       else if (spec.axis === 'z') q.setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2);
+      if (this._tiltQuat) q.premultiply(this._tiltQuat);
       const quat = { x: q.x, y: q.y, z: q.z, w: q.w };
-      const body = this.physics.addCylinder(pos, spec.height / 2, spec.radius, quat, opts);
-      const mesh = this.renderer.makeCylinder(spec.radius, spec.height, spec.color);
-      this.blocks.push({ mesh, body, cleared: false });
+      const body = spec.fixed
+        ? this.physics.addFixedBox(pos, { x: spec.radius, y: spec.height / 2, z: spec.radius }, quat)
+        : this.physics.addCylinder(pos, spec.height / 2, spec.radius, quat, opts);
+      const mesh = this.renderer.makeCylinder(spec.radius, spec.height, spec.color, mech);
+      this.blocks.push({ mesh, body, cleared: false, mechanism: mech });
     }
+  }
+
+  // Hinge a freshly-spawned arm body to the most recent fixed post (a revolute
+  // joint), so it can swing about `hinge.axis` at `hinge.anchor` (both authored
+  // in flat space, then tilted to match a sloping base).
+  _linkHinge(armBody, hinge) {
+    if (!this._lastFixed) return;
+    const anchor = new THREE.Vector3(...hinge.anchor);
+    const axis = new THREE.Vector3(...(hinge.axis || [0, 0, 1]));
+    if (this._tiltQuat) {
+      anchor.applyQuaternion(this._tiltQuat);
+      axis.applyQuaternion(this._tiltQuat);
+    }
+    this.physics.linkRevolute(armBody, this._lastFixed, anchor, axis);
   }
 
   // ---- actions --------------------------------------------------------------
@@ -349,8 +380,8 @@ export class Game {
         steps++;
       }
       this._sync(dt);
-      // Keep the table mesh aligned with the (spinning) physics platform + shield.
-      if (this.renderer.platform) this.renderer.platform.rotation.y = this.physics.platformAngle;
+      // Keep the table mesh aligned with the (spinning or tilted) physics platform.
+      this.renderer.updatePlatform(this.physics.platformAngle);
       this.shield.update();
       this.airstrike.update(dt);
       this._checkWin(false);
@@ -392,8 +423,9 @@ export class Game {
 
   _checkWin(force) {
     if (this.state !== 'playing') return;
-    // Win when every block has been knocked off the table.
-    if (this.blocks.some((b) => !b.cleared)) return;
+    // Win when every CLEARING block is off the table. Mechanism parts (hinge posts,
+    // kicker arms) are hardware, not targets — they never need clearing.
+    if (this.blocks.some((b) => !b.mechanism && !b.cleared)) return;
     // Don't declare victory mid-airstrike unless it's the completion callback.
     if (this.airstrike.busy && !force) return;
     this._win();

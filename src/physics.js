@@ -1,5 +1,11 @@
 import RAPIER from '@dimforge/rapier3d-compat';
 
+// Collision group for hinge posts + kicker arms: membership bit 1, filter = all
+// EXCEPT bit 1. So these jointed parts don't collide with EACH OTHER (a jointed
+// pair overlaps at the hinge, and that penetration otherwise jams the joint solid)
+// but still collide with everything else — blocks, balls, pins.
+export const GROUP_MECH = 0x0002fffd;
+
 // Thin wrapper around a Rapier world tuned for stacked-block demolition.
 export class Physics {
   constructor() {
@@ -83,11 +89,19 @@ export class Physics {
     this.planeCollider = null;
   }
 
-  _addPlatform({ hx, hy, hz }, spin) {
+  _addPlatform({ hx, hy, hz, tilt = 0 }, spin) {
     // Spinning tables are kinematic (position-based) so contacts impart the
     // turntable's surface velocity to the blocks resting on it.
-    const desc = (spin ? RAPIER.RigidBodyDesc.kinematicPositionBased() : RAPIER.RigidBodyDesc.fixed())
-      .setTranslation(0, -hy, 0);
+    const desc = spin ? RAPIER.RigidBodyDesc.kinematicPositionBased() : RAPIER.RigidBodyDesc.fixed();
+    if (tilt) {
+      // Rigidly rotate the flat table about the world origin (its top-face centre)
+      // by `tilt` about Z -> a SLOPING base. (Tilt levels don't spin.) The blocks
+      // are rotated by the same amount in game.js so they load in contact.
+      desc.setTranslation(hy * Math.sin(tilt), -hy * Math.cos(tilt), 0)
+        .setRotation({ x: 0, y: 0, z: Math.sin(tilt / 2), w: Math.cos(tilt / 2) });
+    } else {
+      desc.setTranslation(0, -hy, 0);
+    }
     const body = this.world.createRigidBody(desc);
     // Extra friction so the structure grips the turntable instead of sliding.
     const colDesc = RAPIER.ColliderDesc.cuboid(hx, hy, hz).setFriction(0.95).setRestitution(0.0);
@@ -95,8 +109,53 @@ export class Physics {
     this.platformBody = body;
   }
 
-  // Create a dynamic box. Returns the rigid body.
-  addBox(pos, halfExtents, quat, { density = 1, friction = 0.7, restitution = 0.05 } = {}) {
+  // A fixed (immovable) box — a hinge post / anchor for pivots. In GROUP_MECH so
+  // it won't collide with (and jam) the arm jointed to it.
+  addFixedBox(pos, half, quat) {
+    const desc = RAPIER.RigidBodyDesc.fixed().setTranslation(pos.x, pos.y, pos.z);
+    if (quat) desc.setRotation(quat);
+    const body = this.world.createRigidBody(desc);
+    const col = RAPIER.ColliderDesc.cuboid(half.x, half.y, half.z)
+      .setFriction(0.8)
+      .setRestitution(0.1)
+      .setCollisionGroups(GROUP_MECH);
+    this.world.createCollider(col, body);
+    return body;
+  }
+
+  // Hinge `armBody` to `anchorBody` with a revolute (single-axis) joint at
+  // `worldAnchor`, rotating about `worldAxis`. Gravity then swings the arm — a
+  // "boot on a knee" that kicks blocks when its cocking pin is knocked away.
+  linkRevolute(armBody, anchorBody, worldAnchor, worldAxis) {
+    const a1 = this._localPoint(anchorBody, worldAnchor);
+    const a2 = this._localPoint(armBody, worldAnchor);
+    const ax = this._localDir(anchorBody, worldAxis);
+    const params = RAPIER.JointData.revolute(a1, a2, ax);
+    return this.world.createImpulseJoint(params, anchorBody, armBody, true);
+  }
+
+  // Rotate vector v by quaternion q (x,y,z,w) — no THREE dependency here.
+  _qrot(v, q) {
+    const { x, y, z, w } = q;
+    const tx = 2 * (y * v.z - z * v.y);
+    const ty = 2 * (z * v.x - x * v.z);
+    const tz = 2 * (x * v.y - y * v.x);
+    return { x: v.x + w * tx + (y * tz - z * ty), y: v.y + w * ty + (z * tx - x * tz), z: v.z + w * tz + (x * ty - y * tx) };
+  }
+  // World point -> body-local frame (inverse of the body's transform).
+  _localPoint(body, w) {
+    const t = body.translation(), r = body.rotation();
+    return this._qrot({ x: w.x - t.x, y: w.y - t.y, z: w.z - t.z }, { x: -r.x, y: -r.y, z: -r.z, w: r.w });
+  }
+  // World direction -> body-local frame (rotation only).
+  _localDir(body, d) {
+    const r = body.rotation();
+    return this._qrot(d, { x: -r.x, y: -r.y, z: -r.z, w: r.w });
+  }
+
+  // Create a dynamic box. Returns the rigid body. `group` sets collision groups
+  // (e.g. GROUP_MECH for a hinged kicker arm so it won't jam against its post).
+  addBox(pos, halfExtents, quat, { density = 1, friction = 0.7, restitution = 0.05, group } = {}) {
     const desc = RAPIER.RigidBodyDesc.dynamic().setTranslation(pos.x, pos.y, pos.z);
     if (quat) desc.setRotation(quat);
     const body = this.world.createRigidBody(desc);
@@ -105,6 +164,7 @@ export class Physics {
       .setFriction(friction)
       .setRestitution(restitution)
       .setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS);
+    if (group != null) col.setCollisionGroups(group);
     this.world.createCollider(col, body);
     return body;
   }

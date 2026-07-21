@@ -131,8 +131,10 @@ export class Renderer {
   }
 
   // Build the table (the target surface) sized to the tower's base. Top face y=0.
-  setPlatform({ hx, hy, hz }) {
+  // `tilt` (radians about Z) tilts the whole table into a SLOPING base.
+  setPlatform({ hx, hy, hz, tilt = 0 }) {
     if (this.platform) this.remove(this.platform);
+    this._platformTilt = tilt;
     const g = new THREE.Group();
 
     // Neutral grey + hazard texture so the base clearly reads as "not part of the
@@ -181,6 +183,15 @@ export class Renderer {
 
     this.scene.add(g);
     this.platform = g;
+    this.updatePlatform(0);
+  }
+
+  // Orient the table mesh each frame: spin about Y for turntables, or hold the
+  // fixed Z-tilt for sloping-base levels.
+  updatePlatform(angle) {
+    if (!this.platform) return;
+    if (this._platformTilt) this.platform.rotation.set(0, 0, this._platformTilt);
+    else this.platform.rotation.set(0, angle, 0);
   }
 
   _addStars() {
@@ -209,18 +220,30 @@ export class Renderer {
     });
   }
 
-  makeBox(size, color) {
+  // Grey metallic finish for mechanism parts (hinge posts, kicker arms) so they
+  // read as "hardware you use", not neon "targets you must clear".
+  _mechanismMaterial() {
+    return new THREE.MeshStandardMaterial({
+      color: 0x9aa0ac,
+      emissive: 0x2a2d33,
+      emissiveIntensity: 0.4,
+      metalness: 0.6,
+      roughness: 0.45,
+    });
+  }
+
+  makeBox(size, color, mechanism = false) {
     const geo = new THREE.BoxGeometry(size[0], size[1], size[2]);
-    const mesh = new THREE.Mesh(geo, this._neonMaterial(color));
+    const mesh = new THREE.Mesh(geo, mechanism ? this._mechanismMaterial() : this._neonMaterial(color));
     mesh.castShadow = true;
     mesh.receiveShadow = true;
     this.scene.add(mesh);
     return mesh;
   }
 
-  makeCylinder(radius, height, color) {
+  makeCylinder(radius, height, color, mechanism = false) {
     const geo = new THREE.CylinderGeometry(radius, radius, height, 24);
-    const mesh = new THREE.Mesh(geo, this._neonMaterial(color));
+    const mesh = new THREE.Mesh(geo, mechanism ? this._mechanismMaterial() : this._neonMaterial(color));
     mesh.castShadow = true;
     mesh.receiveShadow = true;
     this.scene.add(mesh);

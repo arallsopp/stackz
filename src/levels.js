@@ -187,6 +187,29 @@ function ramp({ cx = 0, cz = 0, rise = 2.0, run = 3.2, width = 2.2, thick = 0.4,
   return blocks;
 }
 
+// A knee-pivot "kicker": a fixed grey hinge post + a heavy arm ("boot") hinged to
+// swing in the X-Y plane (axis Z). Author it cocked up on one side; a knockable
+// pin holds it there, and shooting the pin lets it swing down and boot blocks off
+// the table. Post + arm are `mechanism` (non-clearing hardware). `cock` is the
+// arm's angle from +x (radians). Returns [post, arm]; author the pin + targets
+// around it in the level.
+function pivot({ hingeX = -1.4, hingeY = 1.7, cz = 0, armLen = 2.2, cock = 2.3, color = NEON.violet } = {}) {
+  const dx = Math.cos(cock), dy = Math.sin(cock);
+  return [
+    { shape: 'box', fixed: true, mechanism: true, pos: [hingeX, hingeY / 2, cz], size: [0.42, hingeY, 0.5], color },
+    {
+      shape: 'box',
+      mechanism: true,
+      pos: [hingeX + dx * armLen / 2, hingeY + dy * armLen / 2, cz],
+      size: [armLen, 0.34, 0.6],
+      rot: [0, 0, cock],
+      density: 8, // heavy boot -> a solid kick
+      color,
+      hinge: { anchor: [hingeX, hingeY, cz], axis: [0, 0, 1] },
+    },
+  ];
+}
+
 function buildLevels() {
   const levels = [];
 
@@ -493,6 +516,46 @@ function buildLevels() {
       ...dominoes(4, { cx: 1.2, cz: 1.6, spacing: 0.62, w: 1.2, h: 1.7, t: 0.24 }),
       { shape: 'box', pos: [0, 0.45, 0], size: [1.6, 0.9, 1.6], color: NEON.violet },
       { shape: 'cyl', pos: [0, 0.9 + 0.7, 0], radius: 0.6, height: 1.4, axis: 'y', color: NEON.green },
+    ],
+  });
+
+  // ===== PROTOTYPES (test via ?level=N) — not part of the main progression =====
+
+  // L21 — SLIP (proto). A SLOPING base: everything is authored flat then the whole
+  // table + stack tilts, so blocks sit precariously — knock one off balance and it
+  // slides down the slope and off the low edge. (Static: a sloped turntable would
+  // just wobble.)
+  reset();
+  levels.push({
+    name: 'SLIP (proto)',
+    par: 3,
+    airstrikes: 1,
+    tilt: 0.16, // ~9° sloping base; downhill toward -x
+    blocks: [
+      ...column(3, { cx: 1.3, bw: 1.0, bh: 0.8, bd: 1.0 }),
+      { shape: 'box', pos: [0, 0.5, 0], size: [1.0, 1.0, 1.0], color: NEON.cyan },
+      { shape: 'box', pos: [0, 1.5 + GAP, 0], size: [1.0, 1.0, 1.0], color: NEON.magenta },
+      { shape: 'box', pos: [-1.3, 0.5, 0], size: [1.0, 1.0, 1.0], color: NEON.yellow },
+    ],
+  });
+
+  // L22 — KICKER (proto). A heavy boot on a knee-pivot, cocked up-left and propped
+  // by a grey strut-pin. Shoot the strut away and the boot swings down through the
+  // bottom and flings UP the right side, booting the neon blocks off that edge.
+  // (Static base so the fixed hinge post stays put.)
+  reset();
+  levels.push({
+    name: 'KICKER (proto)',
+    par: 3,
+    airstrikes: 1,
+    spin: 0,
+    blocks: [
+      ...pivot({ hingeX: -1.4, hingeY: 2.2, armLen: 2.6, cock: 2.7, color: NEON.violet }),
+      // Strut-pin propping the cocked boot up. Shoot it out to release the boot.
+      { shape: 'box', mechanism: true, pos: [-3.75, 1.55, 0], size: [0.34, 3.1, 0.6], color: NEON.violet },
+      // Light targets clustered where the descending boot rakes them off the edge.
+      { shape: 'box', pos: [0.5, 0.5, 0], size: [0.9, 1.0, 0.9], color: NEON.magenta, density: 0.4 },
+      { shape: 'box', pos: [1.45, 0.5, 0], size: [0.9, 1.0, 0.9], color: NEON.cyan, density: 0.4 },
     ],
   });
 
