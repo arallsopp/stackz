@@ -13,6 +13,9 @@ audio (gesture unlock, `webkitAudioContext`) and input (pointer events, safe-are
   edit to `src/*.js`, `src/*.css`, `index.html`, or `vite.config.js` and blocks on
   failure (needs `jq`).
 - `npm run preview -- --port 4173` — serve `dist/` for headless testing
+- The app is **two pages**: the game (`index.html`) and the **Level Studio editor**
+  (`editor.html` → `src/editor/`). `dev`/`build` serve both; open `/editor.html`.
+  See the "Level Studio" section below.
 - `node scripts/gen-icons.mjs` — regenerate PWA icons from `public/favicon.svg`
 
 Deploy is automatic: push to `main` → GitHub Actions builds and publishes to
@@ -33,6 +36,7 @@ Pages (https://arallsopp.github.io/stackz/). See `.github/workflows/deploy.yml`.
 | `hud.js` | All DOM: HUD, overlays, buttons, flash | physics, rules |
 | `config.js` | Cross-cutting gameplay tuning constants | logic |
 | `levels.js` | Level data + authoring helpers (column/jenga/spire/wall/dominoes/pins/ramp) | runtime state |
+| `editor/*` | Level Studio: desktop in-browser level editor (2nd Vite page). Reuses render/physics/shield | ship in the game bundle (separate page/entry) |
 
 Dependency direction: `game` depends on everything; subsystems depend only on
 `render`/`physics` primitives and `config`. Keep it that way. `render.js`
@@ -79,9 +83,13 @@ preselects the mode (`game._applyUrlParams`) — bookmarkable per level for test
 ## Adding a level
 
 Append to `LEVELS` in `levels.js`. Fields:
-`{ name, par, spin?, shield?: { arms, speed }, blocks: [...] }`. Block specs:
+`{ name, par, spin?, shield?: { arms, speed, width?, radius? }, blocks: [...] }`
+(shield `width` = bar half-extent, `radius` = orbit radius; omitted = defaults).
+Block specs:
 `{ shape:'box', pos:[x,y,z], size:[w,h,d], rot?:[x,y,z], color, friction?, restitution?, density? }`
-or `{ shape:'cyl', pos:[x,y,z], radius, height, axis:'x'|'y'|'z', color, ... }`.
+or `{ shape:'cyl', pos:[x,y,z], radius, height, axis:'x'|'y'|'z', color, ... }`
+or `{ shape:'sphere', pos:[x,y,z], radius, color, ... }` (dynamic ball target — no
+fixed spheres; a free sphere drifts off a bare flat table as it settles, like a cyl).
 The optional physics fields fall through to Rapier defaults when omitted; **low
 `friction` is the main tool for fragility** — it lets toppled pieces slide off the
 table. Author blocks resting on the table (y>0) with exact contacts (a tiny `GAP`)
@@ -134,6 +142,46 @@ difficulty. Ship provisional pars, then calibrate from the player's real attempt
 A **SKIP** button (top-centre, `#skip-btn` → `onSkip`) jumps levels while
 authoring/testing — visible only in **Learning mode** (see Game loop § Modes).
 
+## Level Studio (in-browser level editor)
+
+A **desktop, second Vite page** (`editor.html` → `src/editor/`) for authoring levels
+visually instead of hand-tuning against invisible physics. Open `/editor.html`. It
+reuses `render.js`/`physics.js`/`shield.js` directly — what you author IS what the
+game loads. `window.__editor` is the test/debug handle.
+
+**The loop:** place from the toolbox (gravity OFF — meshes sit at raw spec
+transforms, may float/interpenetrate) → **Drop** (build real bodies, `spin:0` +
+shield off, step until motion stops / auto-detect settled) → **Capture** (settled
+`body.translation()/rotation()` written back into `spec.pos`/`spec.rot` → a layout
+that already loaded stable, so it will again) → **Play** (real spin + shield +
+ballistic fire) → **Export** (`levels.push({…})` snippet or JSON — paste into
+`levels.js`). **Load** ingests any `LEVELS` entry or pasted JSON.
+
+**Files:** `editor.js` (orchestrator: item store, selection, drag, orbit camera,
+loop, play — the plan's separate store/interact/panel modules are folded in here
+for the first build), `tools.js` (toolbox catalog; presets reuse the `levels.js`
+helpers verbatim so a placed kicker/ramp is byte-identical to a hand-authored one),
+`settle.js` (Drop/Capture: `buildBodies`/`computePlatform`/`captureItem` — MIRRORS
+`game.js#_spawnBlock` incl. tilt/hinge/mount, so captured levels behave identically
+in-game), `io.js` (serialize/parse), `main.js`, `style.css`.
+
+**Engine hooks it added** (backward-compatible — the game gained them too, so keep
+them working): `shape:'sphere'` dynamic block; authorable `shield.width`/`shield.radius`;
+`levels.js` now **exports** its authoring helpers.
+
+**Editor gotchas (don't reintroduce):**
+- **Author view is flat** — `tilt` applies only at Drop/Play/export, not while
+  authoring; Capture un-rotates by the inverse tilt so specs stay flat-authored
+  (matching how the game re-applies tilt at load).
+- **Capture can't round-trip a cylinder's free rotation** (the spec is axis-based):
+  it captures position + keeps the authored `axis`; only boxes capture a full euler.
+- **Teardown just nulls `item.body`** and relies on the next `physics.reset()` to
+  free them; the shield must be removed explicitly (`shield.reset()`) first.
+- **Play snapshots then restores on Stop**, so pieces culled below `CULL_Y` during a
+  test are revived — Play never destroys authored items.
+- Keep any `settle.js` body-building **in lock-step with `game._spawnBlock`**; if you
+  change spawn logic in one, change the other or captured levels drift from in-game.
+
 ## Physics gotchas (learned the hard way — don't reintroduce)
 
 - **Never call `world.getCollider()` (or any world method) inside a Rapier event
@@ -157,6 +205,13 @@ Chrome via Playwright (installed transiently — `npm i -D playwright`, use
 `#start-btn`, then drive via `window.__game`. Check for `pageerror` (WASM panics
 surface there), assert `__game._frames` keeps advancing (hang detection), and
 screenshot to a scratch dir for visual checks. Then `npm uninstall playwright`.
+
+The **editor** is driven the same way but at `/editor.html` via `window.__editor`
+(click `.tool-btn` buttons to place, then `__editor._drop()/_capture()/_play()`,
+assert `__editor.mode` transitions and check `pageerror`). **Driver-script gotcha:**
+the `.mjs` must live INSIDE the repo — Node resolves `node_modules` from the
+SCRIPT's own directory, not cwd, so a copy under the scratchpad fails with
+`ERR_MODULE_NOT_FOUND: playwright`. Put it at the repo root and `rm` it after.
 
 ## Attribution
 

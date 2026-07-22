@@ -42,13 +42,13 @@ export class Physics {
   // outside it) on one kinematic body, so incoming shots are blocked at certain
   // angles/times. Arms rise from `ringY` (below the table) to `top`, at the wide
   // `radius`. `spin` (rad/s, opposite the platform and slower) sets the rate.
-  addShield({ radius, top, ringY = -1.4, arms = 3, spin = -0.5 }) {
+  addShield({ radius, top, ringY = -1.4, arms = 3, spin = -0.5, width = 0.22 }) {
     const body = this.world.createRigidBody(RAPIER.RigidBodyDesc.kinematicPositionBased());
     const armH = Math.max(top - ringY, 0.5);
     const y = ringY + armH / 2;
     for (let i = 0; i < arms; i++) {
       const a = (i / arms) * Math.PI * 2;
-      const col = RAPIER.ColliderDesc.cuboid(0.22, armH / 2, 0.22)
+      const col = RAPIER.ColliderDesc.cuboid(width, armH / 2, width)
         .setTranslation(Math.cos(a) * radius, y, Math.sin(a) * radius)
         .setRestitution(0.3)
         .setFriction(0.4);
@@ -254,6 +254,22 @@ export class Physics {
       .setDensity(0.5)
       .setFriction(0.6)
       .setRestitution(0.2)
+      .setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS);
+    this.world.createCollider(col, body);
+    return body;
+  }
+
+  // A dynamic spherical block (a target you knock off the table). Local sphere,
+  // so rotation is irrelevant. A touch of angular damping so it settles.
+  addSphere(pos, radius, { density = 1, friction = 0.5, restitution = 0.1 } = {}) {
+    const desc = RAPIER.RigidBodyDesc.dynamic()
+      .setTranslation(pos.x, pos.y, pos.z)
+      .setAngularDamping(0.15);
+    const body = this.world.createRigidBody(desc);
+    const col = RAPIER.ColliderDesc.ball(radius)
+      .setDensity(density)
+      .setFriction(friction)
+      .setRestitution(restitution)
       .setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS);
     this.world.createCollider(col, body);
     return body;

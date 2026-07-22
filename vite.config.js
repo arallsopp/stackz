@@ -7,6 +7,13 @@ export default defineConfig({
     target: 'es2020',
     // Rapier ships a large base64-inlined wasm module; bump the warning limit.
     chunkSizeWarningLimit: 2000,
+    rollupOptions: {
+      // Second page: the desktop Level Studio editor (editor.html → src/editor).
+      input: {
+        main: 'index.html',
+        editor: 'editor.html',
+      },
+    },
   },
   plugins: [
     VitePWA({

@@ -268,6 +268,16 @@ export class Renderer {
     return mesh;
   }
 
+  // A neon spherical TARGET block (distinct from makeBall, the cyan projectile).
+  makeSphere(radius, color, mechanism = false) {
+    const geo = new THREE.SphereGeometry(radius, 20, 16);
+    const mesh = new THREE.Mesh(geo, mechanism ? this._mechanismMaterial() : this._neonMaterial(color));
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    this.scene.add(mesh);
+    return mesh;
+  }
+
   makeBall(radius, color = 0xffffff) {
     const geo = new THREE.SphereGeometry(radius, 20, 16);
     const mat = new THREE.MeshStandardMaterial({
@@ -363,6 +373,16 @@ export class Renderer {
   render() {
     this.composer.render();
   }
+}
+
+// Rapier/Three cylinders are local-Y; lay a log on its side per its `axis`.
+// Returns the base orientation (callers premultiply any level tilt). Shared by the
+// game's spawn path and the editor so the convention lives in exactly one place.
+export function cylinderQuat(axis) {
+  const q = new THREE.Quaternion();
+  if (axis === 'x') q.setFromAxisAngle(new THREE.Vector3(0, 0, 1), Math.PI / 2);
+  else if (axis === 'z') q.setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2);
+  return q;
 }
 
 export { THREE };

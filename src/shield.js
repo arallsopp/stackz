@@ -33,8 +33,8 @@ export class Shield {
   // slower, so the shield counter-rotates lazily.
   build(cfg) {
     this.reset();
-    const { radius, top, ringY = -1.4, arms = 3, speed = -0.5 } = cfg;
-    this.physics.addShield({ radius, top, ringY, arms, spin: speed });
+    const { radius, top, ringY = -1.4, arms = 3, speed = -0.5, width = 0.22 } = cfg;
+    this.physics.addShield({ radius, top, ringY, arms, spin: speed, width });
 
     const mat = new THREE.MeshStandardMaterial({
       color: SHIELD_COLOR,
@@ -53,9 +53,10 @@ export class Shield {
 
     // Vertical arms rising from the ring up past the tower top.
     const armH = Math.max(top - ringY, 0.5);
+    const armW = Math.max(width * 2, 0.2);
     for (let i = 0; i < arms; i++) {
       const a = (i / arms) * Math.PI * 2;
-      const arm = new THREE.Mesh(new THREE.BoxGeometry(0.45, armH, 0.45), mat);
+      const arm = new THREE.Mesh(new THREE.BoxGeometry(armW, armH, armW), mat);
       arm.position.set(Math.cos(a) * radius, ringY + armH / 2, Math.sin(a) * radius);
       arm.castShadow = true;
       group.add(arm);

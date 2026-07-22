@@ -277,6 +277,49 @@ body {
   opacity: 0.85;
 }
 
+/* Level title card — a brief neon flourish when each level loads. */
+.level-title {
+  position: absolute;
+  left: 50%;
+  top: 34%;
+  transform: translate(-50%, -50%) scale(0.85);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  pointer-events: none;
+  z-index: 22;
+  opacity: 0;
+  text-align: center;
+  text-transform: uppercase;
+}
+.level-title .lt-eyebrow {
+  font-size: 13px;
+  letter-spacing: 6px;
+  color: var(--magenta);
+  text-shadow: 0 0 14px rgba(255, 43, 214, 0.7);
+}
+.level-title .lt-name {
+  font-size: clamp(34px, 10vw, 64px);
+  font-weight: 900;
+  letter-spacing: 3px;
+  line-height: 1;
+  color: var(--cyan);
+  text-shadow: 0 0 18px rgba(18, 247, 255, 0.7), 0 0 42px rgba(18, 247, 255, 0.4);
+}
+.level-title.go {
+  animation: level-title 2.4s ease forwards;
+}
+@keyframes level-title {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(0.85); }
+  12% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  68% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(1.06); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .level-title.go { animation-duration: 0.01s; }
+}
+
 .record-line {
   margin: 0 0 18px;
   font-size: 13px;

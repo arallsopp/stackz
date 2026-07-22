@@ -17,6 +17,8 @@
 // tight ball budget — a huge pile is unwinnable, not just slow. `buildLevels`
 // warns in dev if a level exceeds the cap.
 
+import { PLATFORM_MARGIN } from './config.js';
+
 const MAX_BLOCKS = 28;
 
 const NEON = {
@@ -257,6 +259,38 @@ function trapezoid({ topHalf = 1.3, baseHalf = 2.2, height = 1.3, cx = 0, cz = 0
   ];
 }
 
+// Footprint of the base layer -> table half-extents; tallest block top -> maxY.
+// Shared by the game (table sizing + camera framing, game.js#_computeBounds) and
+// the editor's Drop platform, so the shape→bounds math lives in exactly one place.
+export function computeBounds(blocks) {
+  let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity, maxY = 0;
+  for (const s of blocks) {
+    const [x, y, z] = s.pos;
+    let hw, hd, top, bottom;
+    if (s.shape === 'box') {
+      hw = s.size[0] / 2; hd = s.size[2] / 2;
+      top = y + s.size[1] / 2; bottom = y - s.size[1] / 2;
+    } else if (s.shape === 'sphere') {
+      hw = s.radius; hd = s.radius; top = y + s.radius; bottom = y - s.radius;
+    } else {
+      const r = s.radius, hh = s.height / 2;
+      if (s.axis === 'x') { hw = hh; hd = r; top = y + r; bottom = y - r; }
+      else if (s.axis === 'z') { hw = r; hd = hh; top = y + r; bottom = y - r; }
+      else { hw = r; hd = r; top = y + hh; bottom = y - hh; }
+    }
+    maxY = Math.max(maxY, top);
+    // Only the base layer (resting on the table) defines the footprint.
+    if (bottom <= 0.09) {
+      minX = Math.min(minX, x - hw); maxX = Math.max(maxX, x + hw);
+      minZ = Math.min(minZ, z - hd); maxZ = Math.max(maxZ, z + hd);
+    }
+  }
+  if (!isFinite(minX)) { minX = maxX = minZ = maxZ = 0; } // no base layer yet
+  const hx = Math.max(Math.abs(minX), Math.abs(maxX), 0.4) + PLATFORM_MARGIN;
+  const hz = Math.max(Math.abs(minZ), Math.abs(maxZ), 0.4) + PLATFORM_MARGIN;
+  return { hx, hy: 0.5, hz, maxY };
+}
+
 function buildLevels() {
   const levels = [];
 
@@ -268,7 +302,7 @@ function buildLevels() {
     name: 'HOLE',
     par: 3,
     airstrikes: 1,
-    spin: 0.1,
+    spin: 0.2,
     hole: { hx: 1.45, hz: 1.45 },
     blocks: [
       ...ringWall({ r: 2.6, h: 0.55 }),
@@ -645,6 +679,238 @@ function buildLevels() {
     ],
   });
 
+  reset();
+  levels.push({
+    name: "SWINGSET",
+    par: 1,
+    airstrikes: 0,
+    spin: 0.12,
+    hole: {
+      hx: 0.55,
+      hz: 0.8
+    },
+    blocks: [
+      {
+        shape: "box",
+        fixed: true,
+        mechanism: true,
+        pos: [
+          0,
+          1.5,
+          -1
+        ],
+        size: [
+          0.4,
+          3,
+          0.3
+        ]
+      },
+      {
+        shape: "box",
+        fixed: true,
+        mechanism: true,
+        pos: [
+          0,
+          1.5,
+          1
+        ],
+        size: [
+          0.4,
+          3,
+          0.3
+        ]
+      },
+      {
+        shape: "box",
+        fixed: true,
+        mechanism: true,
+        pos: [
+          0,
+          3.15,
+          0
+        ],
+        size: [
+          0.4,
+          0.3,
+          2.3
+        ]
+      },
+      {
+        shape: "box",
+        mechanism: true,
+        pos: [
+          -1.25,
+          2.962,
+          0
+        ],
+        size: [
+          3.15,
+          0.25,
+          0.95
+        ],
+        rot: [
+          0,
+          0,
+          -3.112
+        ],
+        hinge: {
+          anchor: [
+            0,
+            3,
+            0
+          ],
+          axis: [
+            0,
+            0,
+            1
+          ]
+        },
+        density: 8
+      },
+      {
+        shape: "box",
+        pos: [
+          -2.5,
+          1.398,
+          0
+        ],
+        size: [
+          0.35,
+          2.8,
+          0.765
+        ],
+        color: 16770142
+      },
+      {
+        shape: "box",
+        pos: [
+          -0.86,
+          0.349,
+          0.002
+        ],
+        size: [
+          0.4,
+          0.7,
+          0.8
+        ],
+        rot: [
+          0,
+          0.004,
+          0
+        ],
+        color: 1243135,
+        density: 0.2,
+        friction: 0.05
+      },
+      {
+        shape: "box",
+        fixed: true,
+        mechanism: true,
+        pos: [
+          0.65,
+          0.098,
+          0
+        ],
+        size: [
+          0.2,
+          0.2,
+          1
+        ]
+      },
+      {
+        shape: "box",
+        pos: [
+          0.076,
+          -1539.635,
+          0.005
+        ],
+        size: [
+          1,
+          1,
+          1
+        ],
+        rot: [
+          0,
+          0.034,
+          0.008
+        ],
+        color: 4980645
+      },
+      {
+        shape: "box",
+        fixed: true,
+        mechanism: true,
+        pos: [
+          -1.75,
+          0,
+          0
+        ],
+        size: [
+          1,
+          1,
+          1.1
+        ],
+        rot: [
+          0,
+          0,
+          -0.45
+        ]
+      },
+      {
+        shape: "box",
+        fixed: true,
+        mechanism: true,
+        pos: [
+          0.152,
+          3.323,
+          0
+        ],
+        size: [
+          0.05,
+          0.05,
+          1
+        ],
+        rot: [
+          0,
+          -0.004,
+          0
+        ]
+      },
+      {
+        shape: "box",
+        fixed: true,
+        mechanism: true,
+        pos: [
+          -0.139,
+          3.323,
+          0
+        ],
+        size: [
+          0.05,
+          0.05,
+          1
+        ],
+        rot: [
+          0,
+          0.006,
+          -0.001
+        ]
+      },
+      {
+        shape: "cyl",
+        pos: [
+          -0.002,
+          3.448,
+          0
+        ],
+        radius: 0.15,
+        height: 0.85,
+        axis: "z",
+        color: 16770142
+      }
+    ]
+  });
+
   // Dev guard: flag any level that blew the block budget.
   if (import.meta.env?.DEV) {
     levels.forEach((lv, i) => {
@@ -667,3 +933,7 @@ function rotateY90(b, cz) {
 
 export const LEVELS = buildLevels();
 export const NEON_COLORS = NEON;
+
+// Authoring helpers reused by the Level Studio editor toolbox (Phase 2 presets),
+// so a placed "kicker"/"ramp"/"trapezium" is byte-identical to a hand-authored one.
+export { column, jenga, spire, wall, dominoes, pins, ramp, ringWall, trapezoid, swingKicker, rotateY90 };

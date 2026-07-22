@@ -1,11 +1,11 @@
-import { Renderer, THREE } from './render.js';
+import { Renderer, THREE, cylinderQuat } from './render.js';
 import { Physics, GROUP_MECH } from './physics.js';
 import { Airstrike } from './airstrike.js';
 import { Shield } from './shield.js';
 import { Audio } from './audio.js';
 import { Store } from './store.js';
 import { Hud } from './hud.js';
-import { LEVELS } from './levels.js';
+import { LEVELS, computeBounds } from './levels.js';
 import {
   FIXED_TIMESTEP,
   MAX_SUBSTEPS,
@@ -18,7 +18,6 @@ import {
   BALL_BUDGET_BONUS,
   LOSE_GRACE_MS,
   FAIL_PAR_INCREMENT,
-  PLATFORM_MARGIN,
   DEFAULT_SPIN,
   WINS_PER_AIRSTRIKE,
   STAR_PAR_OFFSET_2,
@@ -193,13 +192,14 @@ export class Game {
     // blocks and is free to extend beyond the viewport — the camera frames only the
     // tower, not the shield.
     if (level.shield) {
-      const radius = Math.max(platform.hx, platform.hz) + 2.6;
+      const radius = level.shield.radius ?? Math.max(platform.hx, platform.hz) + 2.6;
       this.shield.build({
         radius,
         top: maxY + 0.4,
         ringY: -1.4,
         arms: level.shield.arms,
         speed: level.shield.speed,
+        width: level.shield.width,
       });
     }
     this._camBase.copy(this.renderer.frameScene({ hx: platform.hx, hz: platform.hz, maxY }));
@@ -207,37 +207,15 @@ export class Game {
     this.hud.hideWin();
     this.hud.hideLose();
     this.hud.setLevel(index + 1);
+    this.hud.showLevelTitle(level.name, index + 1);
     this.hud.setPar(this.par);
     this._updateHud();
   }
 
-  // Footprint of the base layer -> table size; tallest block top -> maxY.
+  // Footprint -> table size; tallest block top -> maxY. (Shared math in levels.js.)
   _computeBounds(level) {
-    let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity, maxY = 0;
-    for (const s of level.blocks) {
-      const [x, y, z] = s.pos;
-      let hw, hd, top, bottom;
-      if (s.shape === 'box') {
-        hw = s.size[0] / 2; hd = s.size[2] / 2;
-        top = y + s.size[1] / 2; bottom = y - s.size[1] / 2;
-      } else {
-        const r = s.radius, hh = s.height / 2;
-        if (s.axis === 'x') { hw = hh; hd = r; top = y + r; bottom = y - r; }
-        else if (s.axis === 'z') { hw = r; hd = hh; top = y + r; bottom = y - r; }
-        else { hw = r; hd = r; top = y + hh; bottom = y - hh; }
-      }
-      maxY = Math.max(maxY, top);
-      // Only the base layer (resting on the table) defines the footprint.
-      if (bottom <= 0.09) {
-        minX = Math.min(minX, x - hw); maxX = Math.max(maxX, x + hw);
-        minZ = Math.min(minZ, z - hd); maxZ = Math.max(maxZ, z + hd);
-      }
-    }
-    // A margin so the table visibly overhangs the base — it reads as scenery, not
-    // as a block to shoot at.
-    const hx = Math.max(Math.abs(minX), Math.abs(maxX), 0.4) + PLATFORM_MARGIN;
-    const hz = Math.max(Math.abs(minZ), Math.abs(maxZ), 0.4) + PLATFORM_MARGIN;
-    return { platform: { hx, hy: 0.5, hz }, maxY };
+    const { hx, hy, hz, maxY } = computeBounds(level.blocks);
+    return { platform: { hx, hy, hz }, maxY };
   }
 
   _onResize() {
@@ -271,15 +249,19 @@ export class Game {
       if (spec.hinge) this._linkHinge(body, spec.hinge);
     } else if (spec.shape === 'cyl') {
       // Rapier cylinder axis is local Y; rotate to lay logs on their side.
-      const q = new THREE.Quaternion();
-      if (spec.axis === 'x') q.setFromAxisAngle(new THREE.Vector3(0, 0, 1), Math.PI / 2);
-      else if (spec.axis === 'z') q.setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2);
+      const q = cylinderQuat(spec.axis);
       if (this._tiltQuat) q.premultiply(this._tiltQuat);
       const quat = { x: q.x, y: q.y, z: q.z, w: q.w };
       const body = spec.fixed
         ? this.physics.addFixedBox(pos, { x: spec.radius, y: spec.height / 2, z: spec.radius }, quat)
         : this.physics.addCylinder(pos, spec.height / 2, spec.radius, quat, opts);
       const mesh = this.renderer.makeCylinder(spec.radius, spec.height, spec.color, mech);
+      this.blocks.push({ mesh, body, cleared: false, mechanism: mech });
+    } else if (spec.shape === 'sphere') {
+      // A dynamic spherical target (no fixed spheres — a sphere makes no sense as
+      // a mount/anchor). Rotation is irrelevant for a ball.
+      const body = this.physics.addSphere(pos, spec.radius, opts);
+      const mesh = this.renderer.makeSphere(spec.radius, spec.color, mech);
       this.blocks.push({ mesh, body, cleared: false, mechanism: mech });
     }
   }

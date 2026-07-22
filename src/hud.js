@@ -19,6 +19,7 @@ export class Hud {
       skipBtn: el('skip-btn'),
       modeBtn: el('mode-btn'),
       modeValue: el('mode-value'),
+      levelTitle: el('level-title'),
       loading: el('loading'),
       startScreen: el('start-screen'),
       winScreen: el('win-screen'),
@@ -79,6 +80,15 @@ export class Hud {
 
   setLevel(n) {
     this.el.level.textContent = n;
+  }
+
+  // A brief neon title card ("LEVEL n" + the level's name) at the start of a level.
+  showLevelTitle(name, n) {
+    const t = this.el.levelTitle;
+    t.innerHTML = `<span class="lt-eyebrow">Level ${n}</span><span class="lt-name">${name}</span>`;
+    t.classList.remove('go');
+    void t.offsetWidth; // restart the animation
+    t.classList.add('go');
   }
 
   // The furthest level reached, shown as a record on the start screen. `n` is the
