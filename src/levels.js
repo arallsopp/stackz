@@ -269,13 +269,13 @@ function buildLevels() {
     par: 3,
     airstrikes: 1,
     spin: 0.1,
-    hole: { hx: 1.05, hz: 1.05 },
+    hole: { hx: 1.45, hz: 1.45 },
     blocks: [
-      ...ringWall({ r: 2.3, h: 0.55 }),
-      { shape: 'box', pos: [1.6, 0.5, 0], size: [0.9, 1.0, 0.9], color: NEON.magenta },
-      { shape: 'box', pos: [-1.6, 0.5, 0], size: [0.9, 1.0, 0.9], color: NEON.cyan },
-      { shape: 'box', pos: [0, 0.5, 1.6], size: [0.9, 1.0, 0.9], color: NEON.yellow },
-      { shape: 'box', pos: [0, 0.5, -1.6], size: [0.9, 1.0, 0.9], color: NEON.green },
+      ...ringWall({ r: 2.6, h: 0.55 }),
+      { shape: 'box', pos: [2.0, 0.5, 0], size: [0.9, 1.0, 0.9], color: NEON.magenta },
+      { shape: 'box', pos: [-2.0, 0.5, 0], size: [0.9, 1.0, 0.9], color: NEON.cyan },
+      { shape: 'box', pos: [0, 0.5, 2.0], size: [0.9, 1.0, 0.9], color: NEON.yellow },
+      { shape: 'box', pos: [0, 0.5, -2.0], size: [0.9, 1.0, 0.9], color: NEON.green },
     ],
   });
 
@@ -603,28 +603,29 @@ function buildLevels() {
     ],
   });
 
-  // SLIP (proto). A SLOPING base — steeper now (~13°) and the blocks are SLIPPERY
-  // (low friction, only just held by the slope): a hit sends them sliding down and
-  // off the low edge. (Static: a sloped turntable would wobble.)
+  // SLIP (proto). A sloping base with a flat CHOCK at the bottom damming a queue of
+  // CYLINDERS up the slope. The cylinders can't help but roll; only the flat-sided
+  // chock holds them. Knock the chock away and they all roll down and off.
   reset();
   levels.push({
     name: 'SLIP (proto)',
-    par: 3,
+    par: 2,
     airstrikes: 1,
     tilt: 0.24, // ~14° sloping base; downhill toward -x
     blocks: [
-      // Flat, slippery slabs (friction only just above the slope angle): a hit sends
-      // them sliding down and off rather than toppling in place.
-      { shape: 'box', pos: [1.3, 0.3, 0.8], size: [1.2, 0.6, 1.2], color: NEON.cyan, friction: 0.26 },
-      { shape: 'box', pos: [1.3, 0.9 + GAP, 0.8], size: [1.2, 0.6, 1.2], color: NEON.magenta, friction: 0.26 },
-      { shape: 'box', pos: [-0.1, 0.3, -0.8], size: [1.2, 0.6, 1.2], color: NEON.yellow, friction: 0.26 },
-      { shape: 'box', pos: [-1.2, 0.3, 0.5], size: [1.2, 0.6, 1.2], color: NEON.green, friction: 0.26 },
+      // Flat chock at the low end (high friction) — the dam.
+      { shape: 'box', pos: [-1.8, 0.6, 0], size: [1.0, 1.2, 1.7], color: NEON.magenta, friction: 0.8 },
+      // Rollers queued up the slope, resting against the chock (and each other).
+      { shape: 'cyl', axis: 'z', pos: [-0.65, 0.55, 0], radius: 0.55, height: 1.6, color: NEON.cyan },
+      { shape: 'cyl', axis: 'z', pos: [0.5, 0.55, 0], radius: 0.55, height: 1.6, color: NEON.yellow },
+      { shape: 'cyl', axis: 'z', pos: [1.65, 0.55, 0], radius: 0.55, height: 1.6, color: NEON.green },
     ],
   });
 
-  // KEYSTONE (proto). A narrow-topped plinth holds two blocks that OVERHANG either
-  // side; they'd tip off but for a heavier block bridging them on top, pinning them
-  // down. Knock the top block away and the two fall off either side.
+  // KEYSTONE (proto). The plinth is a TRAPEZIUM (a wide sloped base narrowing to a
+  // small flat top) so it reads clearly as a plinth. Two blocks OVERHANG that narrow
+  // top; they'd tip off either side but for the heavier keystone bridging + pinning
+  // them. Knock the topmost block (the keystone) off and both sides fall away.
   reset();
   levels.push({
     name: 'KEYSTONE (proto)',
@@ -632,13 +633,15 @@ function buildLevels() {
     airstrikes: 1,
     spin: 0,
     blocks: [
-      // Narrow plinth (fixed grey scenery).
-      { shape: 'box', fixed: true, mechanism: true, pos: [0, 0.75, 0], size: [0.7, 1.5, 1.5] },
-      // Two light blocks overhanging left/right of the narrow top.
-      { shape: 'box', pos: [-0.55, 1.8, 0], size: [1.2, 0.6, 1.3], color: NEON.magenta, friction: 0.5, density: 0.5 },
-      { shape: 'box', pos: [0.55, 1.8, 0], size: [1.2, 0.6, 1.3], color: NEON.cyan, friction: 0.5, density: 0.5 },
-      // Heavy keystone bridging both, pinning them down. Hit it and they fall away.
-      { shape: 'box', pos: [0, 2.45, 0], size: [1.3, 0.7, 1.3], color: NEON.yellow, density: 5 },
+      // Trapezium plinth (fixed grey scenery): core + two sloped sides (a ridge).
+      { shape: 'box', fixed: true, mechanism: true, pos: [0, 0.55, 0], size: [0.8, 1.1, 1.6] },
+      { shape: 'box', fixed: true, mechanism: true, pos: [0.9, 0.55, 0], size: [1.5, 0.3, 1.6], rot: [0, 0, -0.833] },
+      { shape: 'box', fixed: true, mechanism: true, pos: [-0.9, 0.55, 0], size: [1.5, 0.3, 1.6], rot: [0, 0, 0.833] },
+      // Two blocks overhanging the narrow top.
+      { shape: 'box', pos: [-0.5, 1.38, 0], size: [1.1, 0.55, 1.4], color: NEON.magenta, density: 0.5 },
+      { shape: 'box', pos: [0.5, 1.38, 0], size: [1.1, 0.55, 1.4], color: NEON.cyan, density: 0.5 },
+      // Heavy keystone bridging + pinning both. Hit it and they fall off either side.
+      { shape: 'box', pos: [0, 2.0, 0], size: [1.2, 0.6, 1.4], color: NEON.yellow, density: 5 },
     ],
   });
 
