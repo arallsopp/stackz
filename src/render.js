@@ -131,8 +131,9 @@ export class Renderer {
   }
 
   // Build the table (the target surface) sized to the tower's base. Top face y=0.
-  // `tilt` (radians about Z) tilts the whole table into a SLOPING base.
-  setPlatform({ hx, hy, hz, tilt = 0 }) {
+  // `tilt` (radians about Z) tilts the whole table into a SLOPING base; `hole`
+  // ({hx,hz}) opens a central hole so pieces knocked inward drop through.
+  setPlatform({ hx, hy, hz, tilt = 0, hole = null }) {
     if (this.platform) this.remove(this.platform);
     this._platformTilt = tilt;
     const g = new THREE.Group();
@@ -147,10 +148,27 @@ export class Renderer {
       emissive: 0x24262c,
       emissiveIntensity: 0.35,
     });
-    const top = new THREE.Mesh(new THREE.BoxGeometry(hx * 2, hy * 2, hz * 2), topMat);
-    top.position.y = -hy;
-    top.receiveShadow = true;
-    g.add(top);
+    if (hole) {
+      // Ring table: 4 wall slabs around a central hole.
+      const wx = (hx - hole.hx) / 2, wz = (hz - hole.hz) / 2;
+      const walls = [
+        [wx, hz, -(hx + hole.hx) / 2, 0],
+        [wx, hz, (hx + hole.hx) / 2, 0],
+        [hole.hx, wz, 0, -(hz + hole.hz) / 2],
+        [hole.hx, wz, 0, (hz + hole.hz) / 2],
+      ];
+      for (const [whx, whz, cx, cz] of walls) {
+        const slab = new THREE.Mesh(new THREE.BoxGeometry(whx * 2, hy * 2, whz * 2), topMat);
+        slab.position.set(cx, -hy, cz);
+        slab.receiveShadow = true;
+        g.add(slab);
+      }
+    } else {
+      const top = new THREE.Mesh(new THREE.BoxGeometry(hx * 2, hy * 2, hz * 2), topMat);
+      top.position.y = -hy;
+      top.receiveShadow = true;
+      g.add(top);
+    }
 
     // Subtle grey edge so the table rim reads against the dark void (not neon).
     const edges = new THREE.LineSegments(

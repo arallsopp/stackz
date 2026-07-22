@@ -171,6 +171,7 @@ export class Game {
     this._tiltQuat = tilt ? new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), tilt) : null;
     this._lastFixed = null; // most-recent fixed body, for hinge linking
     platform.tilt = tilt;
+    platform.hole = level.hole || null; // ring table: pieces knocked inward drop through
     this.physics.reset(platform, tilt ? 0 : (level.spin ?? DEFAULT_SPIN));
     this.renderer.setPlatform(platform);
 

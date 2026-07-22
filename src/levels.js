@@ -222,23 +222,46 @@ function swingKicker({ barY = 3.0, arm = 2.5, postZ = 1.0, bootW = 0.9, pinColor
   ];
 }
 
+// A TRAPEZOID plinth (a frustum): a flat top with SLOPED sides, all grey mechanism
+// (non-clearing scenery). Knock a block off the flat top and it lands on a slope
+// and drifts down and off the table. `topHalf`/`baseHalf` = half-widths at top and
+// base, `height` = plinth height. Built as a flat-top core + 4 sloped skirts.
+function trapezoid({ topHalf = 1.3, baseHalf = 2.2, height = 1.3, cx = 0, cz = 0 } = {}) {
+  const run = baseHalf - topHalf, rise = height;
+  const theta = Math.atan2(rise, run);
+  const len = Math.hypot(run, rise) + 0.15;
+  const t = 0.3; // skirt thickness
+  const mid = (topHalf + baseHalf) / 2, my = height / 2;
+  const w = topHalf * 2;
+  // `fixed` so the plinth is solid scenery (and rides the turntable) instead of a
+  // pile of loose tilted boxes that slide apart.
+  return [
+    { shape: 'box', fixed: true, mechanism: true, pos: [cx, height / 2, cz], size: [w, height, w] },
+    { shape: 'box', fixed: true, mechanism: true, pos: [cx + mid, my, cz], size: [len, t, w], rot: [0, 0, -theta] },
+    { shape: 'box', fixed: true, mechanism: true, pos: [cx - mid, my, cz], size: [len, t, w], rot: [0, 0, theta] },
+    { shape: 'box', fixed: true, mechanism: true, pos: [cx, my, cz + mid], size: [w, t, len], rot: [theta, 0, 0] },
+    { shape: 'box', fixed: true, mechanism: true, pos: [cx, my, cz - mid], size: [w, t, len], rot: [-theta, 0, 0] },
+  ];
+}
+
 function buildLevels() {
   const levels = [];
 
-  // L1 (TEMP) — KICKER. Prototype up front for testing: a Π swing-frame with a
-  // boot held horizontal by a coloured pin. Shoot the pin and the boot swings down
-  // through the frame and kicks the neon blocks off the far edge.
+  // L1 (TEMP) — HOLE. A ring plinth with a hole in the middle: knock the pieces
+  // inward and they drop straight through the hole (cleared), rather than having to
+  // shove them off the outer edge.
   reset();
   levels.push({
-    name: 'KICKER',
+    name: 'HOLE',
     par: 3,
     airstrikes: 1,
-    spin: 0.12, // rides the turntable (frame + boot + pin + targets spin together)
+    spin: 0.1,
+    hole: { hx: 1.15, hz: 1.15 },
     blocks: [
-      ...swingKicker({ barY: 3.0, arm: 2.5, postZ: 1.0, bootW: 0.9, pinColor: NEON.yellow }),
-      // Targets at the bottom of the swing, kicked off the +x edge (clear path).
-      { shape: 'box', pos: [0.5, 0.5, 0], size: [0.85, 1.0, 0.85], color: NEON.magenta, density: 0.4 },
-      { shape: 'box', pos: [1.4, 0.5, 0], size: [0.85, 1.0, 0.85], color: NEON.cyan, density: 0.4 },
+      { shape: 'box', pos: [1.7, 0.6, 0], size: [0.9, 1.2, 0.9], color: NEON.magenta },
+      { shape: 'box', pos: [-1.7, 0.6, 0], size: [0.9, 1.2, 0.9], color: NEON.cyan },
+      { shape: 'box', pos: [0, 0.6, 1.7], size: [0.9, 1.2, 0.9], color: NEON.yellow },
+      { shape: 'box', pos: [0, 0.6, -1.7], size: [0.9, 1.2, 0.9], color: NEON.green },
     ],
   });
 
@@ -550,10 +573,25 @@ function buildLevels() {
 
   // ===== PROTOTYPES (test via ?level=N) — not part of the main progression =====
 
-  // L21 — SLIP (proto). A SLOPING base: everything is authored flat then the whole
-  // table + stack tilts, so blocks sit precariously — knock one off balance and it
-  // slides down the slope and off the low edge. (Static: a sloped turntable would
-  // just wobble.)
+  // KICKER (proto). A side-on Π swing-frame: a heavy boot held horizontal by a
+  // coloured pin, riding the turntable. Shoot the pin and the boot swings down
+  // through the frame and kicks the neon blocks off the +x edge.
+  reset();
+  levels.push({
+    name: 'KICKER (proto)',
+    par: 3,
+    airstrikes: 1,
+    spin: 0.12,
+    blocks: [
+      ...swingKicker({ barY: 3.0, arm: 2.5, postZ: 1.0, bootW: 0.9, pinColor: NEON.yellow }),
+      { shape: 'box', pos: [0.5, 0.5, 0], size: [0.85, 1.0, 0.85], color: NEON.magenta, density: 0.4 },
+      { shape: 'box', pos: [1.4, 0.5, 0], size: [0.85, 1.0, 0.85], color: NEON.cyan, density: 0.4 },
+    ],
+  });
+
+  // SLIP (proto). A SLOPING base: everything is authored flat then the whole table
+  // + stack tilts, so blocks sit precariously — knock one off balance and it slides
+  // down the slope and off the low edge. (Static: a sloped turntable would wobble.)
   reset();
   levels.push({
     name: 'SLIP (proto)',
@@ -565,6 +603,22 @@ function buildLevels() {
       { shape: 'box', pos: [0, 0.5, 0], size: [1.0, 1.0, 1.0], color: NEON.cyan },
       { shape: 'box', pos: [0, 1.5 + GAP, 0], size: [1.0, 1.0, 1.0], color: NEON.magenta },
       { shape: 'box', pos: [-1.3, 0.5, 0], size: [1.0, 1.0, 1.0], color: NEON.yellow },
+    ],
+  });
+
+  // TRAPEZOID (proto). A frustum plinth — flat top, sloped sides. Knock a block off
+  // the top and it drifts down a slope and off the table.
+  reset();
+  levels.push({
+    name: 'TRAPEZOID (proto)',
+    par: 3,
+    airstrikes: 1,
+    spin: 0.1,
+    blocks: [
+      ...trapezoid({ topHalf: 1.3, baseHalf: 2.3, height: 1.3 }),
+      { shape: 'box', pos: [0.55, 1.8, 0.55], size: [0.8, 1.0, 0.8], color: NEON.magenta },
+      { shape: 'box', pos: [-0.55, 1.8, -0.55], size: [0.8, 1.0, 0.8], color: NEON.cyan },
+      { shape: 'box', pos: [0.55, 1.8, -0.55], size: [0.8, 1.0, 0.8], color: NEON.yellow },
     ],
   });
 

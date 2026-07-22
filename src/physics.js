@@ -90,7 +90,7 @@ export class Physics {
     this.planeCollider = null;
   }
 
-  _addPlatform({ hx, hy, hz, tilt = 0 }, spin) {
+  _addPlatform({ hx, hy, hz, tilt = 0, hole = null }, spin) {
     // Spinning tables are kinematic (position-based) so contacts impart the
     // turntable's surface velocity to the blocks resting on it.
     const desc = spin ? RAPIER.RigidBodyDesc.kinematicPositionBased() : RAPIER.RigidBodyDesc.fixed();
@@ -104,9 +104,28 @@ export class Physics {
       desc.setTranslation(0, -hy, 0);
     }
     const body = this.world.createRigidBody(desc);
-    // Extra friction so the structure grips the turntable instead of sliding.
-    const colDesc = RAPIER.ColliderDesc.cuboid(hx, hy, hz).setFriction(0.95).setRestitution(0.0);
-    this.world.createCollider(colDesc, body);
+    if (hole) {
+      // A ring table: 4 walls around a central hole (open to the void), so pieces
+      // knocked inward drop through and are cleared. Colliders offset from the body.
+      const wx = (hx - hole.hx) / 2, wz = (hz - hole.hz) / 2;
+      const walls = [
+        [wx, hz, -(hx + hole.hx) / 2, 0], // left
+        [wx, hz, (hx + hole.hx) / 2, 0], // right
+        [hole.hx, wz, 0, -(hz + hole.hz) / 2], // front
+        [hole.hx, wz, 0, (hz + hole.hz) / 2], // back
+      ];
+      for (const [whx, whz, cx, cz] of walls) {
+        const col = RAPIER.ColliderDesc.cuboid(whx, hy, whz)
+          .setTranslation(cx, 0, cz)
+          .setFriction(0.95)
+          .setRestitution(0.0);
+        this.world.createCollider(col, body);
+      }
+    } else {
+      // Extra friction so the structure grips the turntable instead of sliding.
+      const colDesc = RAPIER.ColliderDesc.cuboid(hx, hy, hz).setFriction(0.95).setRestitution(0.0);
+      this.world.createCollider(colDesc, body);
+    }
     this.platformBody = body;
   }
 
