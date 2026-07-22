@@ -36,7 +36,7 @@ const reset = () => (_ci = 0);
 const GAP = 0.004; // hair gap avoids initial interpenetration -> rock-solid load
 
 // A single vertical column of boxes.
-function column(n, { cx = 0, cz = 0, bw = 1, bh = 0.8, bd = 1 } = {}) {
+function column(n, { cx = 0, cz = 0, bw = 1, bh = 0.8, bd = 1, friction } = {}) {
   const blocks = [];
   for (let i = 0; i < n; i++) {
     blocks.push({
@@ -44,9 +44,22 @@ function column(n, { cx = 0, cz = 0, bw = 1, bh = 0.8, bd = 1 } = {}) {
       pos: [cx, bh / 2 + i * (bh + GAP), cz],
       size: [bw, bh, bd],
       color: nextColor(),
+      friction,
     });
   }
   return blocks;
+}
+
+// A low containment wall (square rim) of fixed grey mechanism — stops pieces
+// sliding off the OUTER edge so they can only be cleared inward (through a hole).
+function ringWall({ r = 2.2, h = 0.55, t = 0.25 } = {}) {
+  const L = r * 2 + t;
+  return [
+    { shape: 'box', fixed: true, mechanism: true, pos: [r, h / 2, 0], size: [t, h, L] },
+    { shape: 'box', fixed: true, mechanism: true, pos: [-r, h / 2, 0], size: [t, h, L] },
+    { shape: 'box', fixed: true, mechanism: true, pos: [0, h / 2, r], size: [L, h, t] },
+    { shape: 'box', fixed: true, mechanism: true, pos: [0, h / 2, -r], size: [L, h, t] },
+  ];
 }
 
 // A Jenga tower: `layers` layers of 3 bars, orientation alternating 90°.
@@ -247,21 +260,22 @@ function trapezoid({ topHalf = 1.3, baseHalf = 2.2, height = 1.3, cx = 0, cz = 0
 function buildLevels() {
   const levels = [];
 
-  // L1 (TEMP) — HOLE. A ring plinth with a hole in the middle: knock the pieces
-  // inward and they drop straight through the hole (cleared), rather than having to
-  // shove them off the outer edge.
+  // L1 (TEMP) — HOLE. A ring plinth with a hole in the middle, walled around the
+  // outside (half-height) so a direct hit can't just knock a piece off the far
+  // edge — you have to knock the pieces INWARD, through the hole, to clear them.
   reset();
   levels.push({
     name: 'HOLE',
     par: 3,
     airstrikes: 1,
     spin: 0.1,
-    hole: { hx: 1.15, hz: 1.15 },
+    hole: { hx: 1.05, hz: 1.05 },
     blocks: [
-      { shape: 'box', pos: [1.7, 0.6, 0], size: [0.9, 1.2, 0.9], color: NEON.magenta },
-      { shape: 'box', pos: [-1.7, 0.6, 0], size: [0.9, 1.2, 0.9], color: NEON.cyan },
-      { shape: 'box', pos: [0, 0.6, 1.7], size: [0.9, 1.2, 0.9], color: NEON.yellow },
-      { shape: 'box', pos: [0, 0.6, -1.7], size: [0.9, 1.2, 0.9], color: NEON.green },
+      ...ringWall({ r: 2.3, h: 0.55 }),
+      { shape: 'box', pos: [1.6, 0.5, 0], size: [0.9, 1.0, 0.9], color: NEON.magenta },
+      { shape: 'box', pos: [-1.6, 0.5, 0], size: [0.9, 1.0, 0.9], color: NEON.cyan },
+      { shape: 'box', pos: [0, 0.5, 1.6], size: [0.9, 1.0, 0.9], color: NEON.yellow },
+      { shape: 'box', pos: [0, 0.5, -1.6], size: [0.9, 1.0, 0.9], color: NEON.green },
     ],
   });
 
@@ -589,36 +603,42 @@ function buildLevels() {
     ],
   });
 
-  // SLIP (proto). A SLOPING base: everything is authored flat then the whole table
-  // + stack tilts, so blocks sit precariously — knock one off balance and it slides
-  // down the slope and off the low edge. (Static: a sloped turntable would wobble.)
+  // SLIP (proto). A SLOPING base — steeper now (~13°) and the blocks are SLIPPERY
+  // (low friction, only just held by the slope): a hit sends them sliding down and
+  // off the low edge. (Static: a sloped turntable would wobble.)
   reset();
   levels.push({
     name: 'SLIP (proto)',
     par: 3,
     airstrikes: 1,
-    tilt: 0.16, // ~9° sloping base; downhill toward -x
+    tilt: 0.24, // ~14° sloping base; downhill toward -x
     blocks: [
-      ...column(3, { cx: 1.3, bw: 1.0, bh: 0.8, bd: 1.0 }),
-      { shape: 'box', pos: [0, 0.5, 0], size: [1.0, 1.0, 1.0], color: NEON.cyan },
-      { shape: 'box', pos: [0, 1.5 + GAP, 0], size: [1.0, 1.0, 1.0], color: NEON.magenta },
-      { shape: 'box', pos: [-1.3, 0.5, 0], size: [1.0, 1.0, 1.0], color: NEON.yellow },
+      // Flat, slippery slabs (friction only just above the slope angle): a hit sends
+      // them sliding down and off rather than toppling in place.
+      { shape: 'box', pos: [1.3, 0.3, 0.8], size: [1.2, 0.6, 1.2], color: NEON.cyan, friction: 0.26 },
+      { shape: 'box', pos: [1.3, 0.9 + GAP, 0.8], size: [1.2, 0.6, 1.2], color: NEON.magenta, friction: 0.26 },
+      { shape: 'box', pos: [-0.1, 0.3, -0.8], size: [1.2, 0.6, 1.2], color: NEON.yellow, friction: 0.26 },
+      { shape: 'box', pos: [-1.2, 0.3, 0.5], size: [1.2, 0.6, 1.2], color: NEON.green, friction: 0.26 },
     ],
   });
 
-  // TRAPEZOID (proto). A frustum plinth — flat top, sloped sides. Knock a block off
-  // the top and it drifts down a slope and off the table.
+  // KEYSTONE (proto). A narrow-topped plinth holds two blocks that OVERHANG either
+  // side; they'd tip off but for a heavier block bridging them on top, pinning them
+  // down. Knock the top block away and the two fall off either side.
   reset();
   levels.push({
-    name: 'TRAPEZOID (proto)',
-    par: 3,
+    name: 'KEYSTONE (proto)',
+    par: 2,
     airstrikes: 1,
-    spin: 0.1,
+    spin: 0,
     blocks: [
-      ...trapezoid({ topHalf: 1.3, baseHalf: 2.3, height: 1.3 }),
-      { shape: 'box', pos: [0.55, 1.8, 0.55], size: [0.8, 1.0, 0.8], color: NEON.magenta },
-      { shape: 'box', pos: [-0.55, 1.8, -0.55], size: [0.8, 1.0, 0.8], color: NEON.cyan },
-      { shape: 'box', pos: [0.55, 1.8, -0.55], size: [0.8, 1.0, 0.8], color: NEON.yellow },
+      // Narrow plinth (fixed grey scenery).
+      { shape: 'box', fixed: true, mechanism: true, pos: [0, 0.75, 0], size: [0.7, 1.5, 1.5] },
+      // Two light blocks overhanging left/right of the narrow top.
+      { shape: 'box', pos: [-0.55, 1.8, 0], size: [1.2, 0.6, 1.3], color: NEON.magenta, friction: 0.5, density: 0.5 },
+      { shape: 'box', pos: [0.55, 1.8, 0], size: [1.2, 0.6, 1.3], color: NEON.cyan, friction: 0.5, density: 0.5 },
+      // Heavy keystone bridging both, pinning them down. Hit it and they fall away.
+      { shape: 'box', pos: [0, 2.45, 0], size: [1.3, 0.7, 1.3], color: NEON.yellow, density: 5 },
     ],
   });
 
